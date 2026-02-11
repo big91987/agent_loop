@@ -1,0 +1,12 @@
+flowchart LR
+    U["User Input"] --> M["Append user message"]
+    M --> L1["Call LLM with v2 tools"]
+    L1 --> C{"Has tool_calls?"}
+    C -- "No" --> A1["Append assistant final"]
+    A1 --> O["Return final text"]
+    O --> N["Next turn"]
+    N --> U
+    C -- "Yes" --> T["Run teaching tool (calculate/get_current_time)"]
+    T --> R["Append tool result message"]
+    R --> L2["Call LLM again"]
+    L2 --> C

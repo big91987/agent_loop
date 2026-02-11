@@ -1,0 +1,7 @@
+flowchart LR
+    U["User Input"] --> M["Append user message"]
+    M --> L["Call LLM (no tools)"]
+    L --> A["Append assistant message"]
+    A --> O["Return assistant text"]
+    O --> N["Next turn"]
+    N --> U
