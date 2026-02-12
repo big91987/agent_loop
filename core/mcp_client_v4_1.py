@@ -29,6 +29,7 @@ def _to_v41_config(cfg: object) -> MCPServerConfigV41:
     if message_url == "":
         message_url = None
     timeout_seconds = int(getattr(cfg, "timeout_seconds", 30))
+    stdio_msg_format = str(getattr(cfg, "stdio_msg_format", "auto")).strip().lower() or "auto"
     return MCPServerConfigV41(
         name=name,
         type=mcp_type,
@@ -38,6 +39,7 @@ def _to_v41_config(cfg: object) -> MCPServerConfigV41:
         url=url,
         message_url=message_url,
         headers=headers,
+        stdio_msg_format=stdio_msg_format,
         timeout_seconds=timeout_seconds,
     )
 

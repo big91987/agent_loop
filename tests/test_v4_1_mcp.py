@@ -226,6 +226,8 @@ while True:
             }
         )
         continue
+    if method == "notifications/initialized":
+        continue
     write_frame({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": "unknown method"}})
 """,
                 encoding="utf-8",

@@ -53,6 +53,8 @@ class StdioMCPClient:
         self._initialized = False
         self._request_lock = asyncio.Lock()
         self._next_request_id = 1
+        self._configured_msg_format = self._normalize_msg_format(getattr(config, "stdio_msg_format", "auto"))
+        self._active_msg_format = self._configured_msg_format
         self._debug = os.getenv("MCP_V41_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
 
     def _debug_log(self, message: str) -> None:
@@ -81,13 +83,24 @@ class StdioMCPClient:
         return f"stderr_tail={preview}"
 
     @staticmethod
-    def _build_frame(payload: Dict[str, object]) -> bytes:
+    def _normalize_msg_format(value: object) -> str:
+        candidate = str(value).strip().lower()
+        if candidate in {"line", "content-length", "auto"}:
+            return candidate
+        return "auto"
+
+    @staticmethod
+    def _build_content_length_frame(payload: Dict[str, object]) -> bytes:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
         return header + body
 
     @staticmethod
-    async def _read_frame(stream: asyncio.StreamReader, timeout_seconds: int) -> Dict[str, object]:
+    def _build_line_frame(payload: Dict[str, object]) -> bytes:
+        return (json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8")
+
+    @staticmethod
+    async def _read_content_length_frame(stream: asyncio.StreamReader, timeout_seconds: int) -> Dict[str, object]:
         header_bytes = await asyncio.wait_for(stream.readuntil(b"\r\n\r\n"), timeout=timeout_seconds)
         header_text = header_bytes.decode("ascii", errors="replace")
         length = None
@@ -102,6 +115,30 @@ class StdioMCPClient:
         if not isinstance(data, dict):
             raise MCPError("Invalid MCP response payload")
         return data
+
+    @staticmethod
+    async def _read_line_frame(stream: asyncio.StreamReader, timeout_seconds: int) -> Dict[str, object]:
+        while True:
+            line = await asyncio.wait_for(stream.readline(), timeout=timeout_seconds)
+            if not line:
+                raise asyncio.IncompleteReadError(partial=b"", expected=None)
+            stripped = line.strip()
+            if not stripped:
+                continue
+            data = json.loads(stripped.decode("utf-8", errors="replace"))
+            if not isinstance(data, dict):
+                raise MCPError("Invalid line-delimited MCP response payload")
+            return data
+
+    def _build_frame(self, payload: Dict[str, object], msg_format: str) -> bytes:
+        if msg_format == "line":
+            return self._build_line_frame(payload)
+        return self._build_content_length_frame(payload)
+
+    async def _read_frame(self, stream: asyncio.StreamReader, msg_format: str) -> Dict[str, object]:
+        if msg_format == "line":
+            return await self._read_line_frame(stream, self.config.timeout_seconds)
+        return await self._read_content_length_frame(stream, self.config.timeout_seconds)
 
     async def _start_process(self) -> None:
         self._debug_log(
@@ -125,14 +162,34 @@ class StdioMCPClient:
         self._stderr_tail = []
         if self._stderr is not None:
             self._stderr_task = asyncio.create_task(self._consume_stderr())
+        self._active_msg_format = self._configured_msg_format
 
-    async def _ensure_connected(self) -> None:
-        if self._proc is None or self._proc.returncode is not None:
-            await self._start_process()
-        if self._stdin is None or self._stdout is None:
-            raise MCPError(f"{self.config.name}: missing stdio stream handles")
-        if self._initialized:
+    async def _close_process(self) -> None:
+        if self._proc is None:
             return
+        self._proc.terminate()
+        try:
+            await asyncio.wait_for(self._proc.wait(), timeout=2)
+        except asyncio.TimeoutError:
+            self._proc.kill()
+            await self._proc.wait()
+        if self._stderr_task is not None:
+            self._stderr_task.cancel()
+            try:
+                await self._stderr_task
+            except asyncio.CancelledError:
+                pass
+        self._proc = None
+        self._stdin = None
+        self._stdout = None
+        self._stderr = None
+        self._stderr_task = None
+        self._initialized = False
+
+    async def _try_initialize(self, msg_format: str) -> tuple[bool, str]:
+        if self._stdin is None or self._stdout is None:
+            return False, "missing stdio stream handles"
+
         request_id = self._next_request_id
         self._next_request_id += 1
         init_payload = {
@@ -145,19 +202,60 @@ class StdioMCPClient:
                 "clientInfo": {"name": "python-agent-suite", "version": "0.1.0"},
             },
         }
-        self._debug_log("send initialize")
-        self._stdin.write(self._build_frame(init_payload))
-        await self._stdin.drain()
         try:
-            init_resp = await self._read_frame(self._stdout, self.config.timeout_seconds)
-        except TimeoutError as err:
-            raise MCPError(
-                f"{self.config.name}: initialize timeout after {self.config.timeout_seconds}s ({self._stderr_hint()})"
-            ) from err
+            self._debug_log(f"send initialize (msg-format={msg_format})")
+            self._stdin.write(self._build_frame(init_payload, msg_format))
+            await self._stdin.drain()
+            init_resp = await self._read_frame(self._stdout, msg_format)
+        except TimeoutError:
+            rc = self._proc.returncode if self._proc is not None else None
+            return False, f"initialize timeout (rc={rc}; {self._stderr_hint()})"
+        except asyncio.IncompleteReadError:
+            rc = self._proc.returncode if self._proc is not None else None
+            return False, f"initialize stream closed (rc={rc}; {self._stderr_hint()})"
+        except Exception as err:  # noqa: BLE001
+            rc = self._proc.returncode if self._proc is not None else None
+            return False, f"initialize parse/send error={err} (rc={rc}; {self._stderr_hint()})"
         if "error" in init_resp:
-            raise MCPError(f"{self.config.name}: initialize failed: {init_resp['error']}")
+            return False, f"initialize failed: {init_resp['error']}"
+
+        notify_payload = {
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+            "params": {},
+        }
+        try:
+            self._stdin.write(self._build_frame(notify_payload, msg_format))
+            await self._stdin.drain()
+        except Exception:  # noqa: BLE001
+            pass
+
+        self._active_msg_format = msg_format
         self._initialized = True
-        self._debug_log("initialize ok")
+        self._debug_log(f"initialize ok (msg-format={msg_format})")
+        return True, ""
+
+    async def _ensure_connected(self) -> None:
+        if self._proc is None or self._proc.returncode is not None:
+            await self._start_process()
+        if self._stdin is None or self._stdout is None:
+            raise MCPError(f"{self.config.name}: missing stdio stream handles")
+        if self._initialized:
+            return
+        formats = [self._configured_msg_format]
+        if self._configured_msg_format == "auto":
+            formats = ["line", "content-length"]
+        attempts: List[str] = []
+        for idx, fmt in enumerate(formats):
+            if idx > 0:
+                await self._close_process()
+                await self._start_process()
+            ok, detail = await self._try_initialize(fmt)
+            if ok:
+                return
+            attempts.append(f"{fmt} -> {detail}")
+            self._debug_log(f"initialize failed (msg-format={fmt}): {detail}")
+        raise MCPError(f"{self.config.name}: initialize failed for all stdio formats ({'; '.join(attempts)})")
 
     async def _request(
         self,
@@ -180,19 +278,39 @@ class StdioMCPClient:
                 "method": method,
                 "params": params,
             }
-            self._debug_log(f"send method={method} id={request_id}")
-            self._stdin.write(self._build_frame(payload))
+            self._debug_log(f"send method={method} id={request_id} (msg-format={self._active_msg_format})")
+            self._stdin.write(self._build_frame(payload, self._active_msg_format))
             await self._stdin.drain()
             try:
-                result_resp = await self._read_frame(self._stdout, self.config.timeout_seconds)
+                result_resp = await self._read_response_for_id(request_id)
             except TimeoutError as err:
+                rc = self._proc.returncode if self._proc is not None else None
                 raise MCPError(
-                    f"{self.config.name}: {method} timeout after {self.config.timeout_seconds}s ({self._stderr_hint()})"
+                    f"{self.config.name}: {method} timeout after {self.config.timeout_seconds}s "
+                    f"(rc={rc}; {self._stderr_hint()})"
+                ) from err
+            except asyncio.IncompleteReadError as err:
+                rc = self._proc.returncode if self._proc is not None else None
+                raise MCPError(
+                    f"{self.config.name}: {method} stream closed before MCP frame "
+                    f"(rc={rc}; {self._stderr_hint()})"
                 ) from err
             if "error" in result_resp:
                 raise MCPError(f"{self.config.name}: {method} failed: {result_resp['error']}")
             self._debug_log(f"recv method={method} id={request_id} ok")
             return result_resp
+
+    async def _read_response_for_id(self, expected_id: int) -> Dict[str, object]:
+        if self._stdout is None:
+            raise MCPError(f"{self.config.name}: missing stdout stream")
+        for _ in range(12):
+            resp = await self._read_frame(self._stdout, self._active_msg_format)
+            resp_id = resp.get("id")
+            if resp_id != expected_id:
+                self._debug_log(f"skip response id={resp_id} expected={expected_id}")
+                continue
+            return resp
+        raise MCPError(f"{self.config.name}: too many unmatched responses for request id={expected_id}")
 
     async def list_tools(self) -> List[Dict[str, object]]:
         data = await self._request(method="tools/list", params={})
@@ -249,26 +367,8 @@ class StdioMCPClient:
 
     async def aclose(self) -> None:
         async with self._request_lock:
-            if self._proc is None:
-                return
             self._debug_log("closing stdio process")
-            self._proc.terminate()
-            try:
-                await asyncio.wait_for(self._proc.wait(), timeout=2)
-            except asyncio.TimeoutError:
-                self._proc.kill()
-            if self._stderr_task is not None:
-                self._stderr_task.cancel()
-                try:
-                    await self._stderr_task
-                except asyncio.CancelledError:
-                    pass
-            self._proc = None
-            self._stdin = None
-            self._stdout = None
-            self._stderr = None
-            self._stderr_task = None
-            self._initialized = False
+            await self._close_process()
 
 
 class HTTPMCPClient:
@@ -355,6 +455,14 @@ class HTTPMCPClient:
             )
             if "error" in init_resp:
                 raise MCPError(f"{self.config.name}: initialize failed: {init_resp['error']}")
+            # Per MCP lifecycle, client must notify server after successful initialize.
+            await self._post_notification(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/initialized",
+                    "params": {},
+                },
+            )
             self._initialized = True
         result_resp = await self._post_jsonrpc(
             {
@@ -367,6 +475,31 @@ class HTTPMCPClient:
         if "error" in result_resp:
             raise MCPError(f"{self.config.name}: {method} failed: {result_resp['error']}")
         return result_resp
+
+    async def _post_notification(self, payload: Dict[str, object]) -> None:
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            "Mcp-Protocol-Version": "2024-11-05",
+            **self.config.headers,
+        }
+        if self._session_id:
+            headers["Mcp-Session-Id"] = self._session_id
+        request = Request(self.rpc_url, data=body, headers=headers, method="POST")
+
+        def _send() -> None:
+            try:
+                with urlopen(request, timeout=self.config.timeout_seconds) as response:  # noqa: S310
+                    session_id = response.headers.get("Mcp-Session-Id")
+                    if session_id:
+                        self._session_id = session_id
+                    _ = response.read()
+            except Exception:  # noqa: BLE001
+                # Notification should not break the session if server chooses not to reply.
+                return None
+
+        await asyncio.to_thread(_send)
 
     async def list_tools(self) -> List[Dict[str, object]]:
         data = await self._request(method="tools/list", params={})

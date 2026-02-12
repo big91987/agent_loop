@@ -14,6 +14,7 @@ class MCPServerConfig:
     url: str | None = None
     message_url: str | None = None
     headers: Dict[str, str] = field(default_factory=dict)
+    stdio_msg_format: str = "auto"
     timeout_seconds: int = 30
 
 

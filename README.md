@@ -31,6 +31,7 @@
 - `mcp_servers`: MCP 服务配置列表（v4/v4.1）
 - `mcp_servers[].type`: 传输类型（`stdio`、`sse`、`streamable_http`）
 - `mcp_servers[].command/args/env`: `stdio` 传输字段
+- `mcp_servers[].stdio_msg_format`: `stdio` 消息格式（`auto`、`line`、`content-length`，默认 `auto`）
 - `mcp_servers[].url/message_url/headers`: `sse` 与 `streamable_http` 传输字段
 - `skills_dir`: Skill 根目录（v5）
 
@@ -137,6 +138,7 @@ v4 示例 server（stdio）：
 - 基于 `V4MCPToolsLoop` 扩展（`V4_1MCPToolsLoop`）
 - MCP client 实现：`core/mcp_client_v4_1.py`（独立于 v4）
 - stdio 连接策略：长生命周期子进程复用，CLI 退出时回收
+- stdio 消息格式策略：支持 `line` / `content-length`，默认 `auto`（先 `line`，失败再 `content-length`）
 - 在 v4 的 MCP tools 基础上，新增 resource 桥接工具：
   - `mcp.<server>.resource_list`
   - `mcp.<server>.resource_read`
@@ -148,6 +150,23 @@ v4 示例 server（stdio）：
   - `sse`
   - `streamable_http`
 - 推荐配置：`configs/v4_1_mcp_simple.json`
+
+`stdio_msg_format` 示例：
+
+```json
+{
+  "mcp_servers": [
+    {
+      "name": "playwright",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"],
+      "stdio_msg_format": "auto",
+      "timeout_seconds": 120
+    }
+  ]
+}
+```
 
 `mcp_servers[].type` 示例：
 

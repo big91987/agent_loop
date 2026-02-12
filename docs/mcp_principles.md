@@ -19,6 +19,30 @@ MCP 常见交互：
 4. `resources/list`：查询服务端暴露的资源清单（URI、描述、类型）。
 5. `resources/read`：按 URI 读取资源内容。
 
+### 2.1 stdio 消息格式说明（v4.1 重点）
+
+在 `stdio` 传输下，生态里目前存在两类消息封包方式：
+
+1. `line`（newline-delimited JSON-RPC）  
+2. `content-length`（`Content-Length` 头 + JSON body）
+
+`v4.1` 客户端支持 `mcp_servers[].stdio_msg_format`：
+- `line`
+- `content-length`
+- `auto`（默认，先 `line`，失败再 `content-length`）
+
+这用于兼容不同 MCP server 的实现差异（尤其是新旧实现混用场景）。
+
+### 2.2 初始化生命周期（v4.1）
+
+`v4.1` 客户端在初始化时遵循以下顺序：
+
+1. 发送 `initialize`
+2. 收到成功响应后，发送 `notifications/initialized`
+3. 再进入 `tools/list` / `resources/list` / `tools/call` 等正常调用
+
+如果 server 不支持 `resources/list`，`v4.1` 会自动降级为“仅 tools”模式，不中断 loop。
+
 在本项目里：
 - v4 客户端实现：`core/mcp_client.py`
 - v4.1 客户端实现：`core/mcp_client_v4_1.py`
@@ -118,6 +142,9 @@ transport 通过 `mcp_servers[].type` 区分：
 2. 调用超时  
   - 提高 `timeout_seconds`  
   - 检查 server 侧是否阻塞
+  - 对 `stdio` server，尝试设置 `stdio_msg_format`：
+    - 先 `auto`
+    - 不稳定时手动指定 `line` 或 `content-length`
 
 3. 工具名冲突/不清晰  
   - 通过 `mcp.<server>.<tool>` 命名前缀区分来源

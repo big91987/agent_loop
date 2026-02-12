@@ -53,6 +53,7 @@ def load_config(path: str) -> AppConfig:
     raw_mcp_servers = raw.get("mcp_servers", [])
     mcp_servers: List[MCPServerConfig] = []
     supported_mcp_types = {"stdio", "sse", "streamable_http"}
+    supported_stdio_msg_formats = {"auto", "line", "content-length"}
     if isinstance(raw_mcp_servers, list):
         for item in raw_mcp_servers:
             if not isinstance(item, dict):
@@ -83,6 +84,10 @@ def load_config(path: str) -> AppConfig:
             message_url = str(message_url_raw).strip() if message_url_raw is not None else None
             if message_url == "":
                 message_url = None
+            stdio_msg_format_raw = item.get("stdio_msg_format", "auto")
+            stdio_msg_format = str(stdio_msg_format_raw).strip().lower() or "auto"
+            if stdio_msg_format not in supported_stdio_msg_formats:
+                stdio_msg_format = "auto"
             timeout = int(item.get("timeout_seconds", 30))
             if mcp_type == "stdio" and not command:
                 continue
@@ -98,6 +103,7 @@ def load_config(path: str) -> AppConfig:
                     url=url,
                     message_url=message_url,
                     headers=headers,
+                    stdio_msg_format=stdio_msg_format,
                     timeout_seconds=timeout,
                 ),
             )

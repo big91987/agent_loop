@@ -8,14 +8,16 @@
   "default_loop_version": "v4.1",
   "mcp_servers": [
     {
-      "name": "playwright",
+      "name": "amap-maps-node",
       "type": "stdio",
       "command": "npx",
       "args": [
         "-y",
-        "@playwright/mcp@latest"
+        "@amap/amap-maps-mcp-server"
       ],
-      "env": {},
+      "env": {
+        "AMAP_MAPS_API_KEY": "8d3f2fc90891febf58ac1ba380bcb061"
+      },
       "timeout_seconds": 120
     }
   ],
