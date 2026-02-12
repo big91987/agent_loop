@@ -9,10 +9,15 @@ from typing import Dict, List
 
 @dataclass(frozen=True)
 class MCPServerConfig:
+    # Keep extended fields for config compatibility; v4 stdio client only uses command/args/env/timeout.
     name: str
-    command: str
+    type: str = "stdio"
+    command: str = ""
     args: List[str] = field(default_factory=list)
     env: Dict[str, str] = field(default_factory=dict)
+    url: str | None = None
+    message_url: str | None = None
+    headers: Dict[str, str] = field(default_factory=dict)
     timeout_seconds: int = 30
 
 
@@ -22,8 +27,7 @@ class MCPError(RuntimeError):
 
 class StdioMCPClient:
     """
-    Minimal MCP client over stdio using JSON-RPC style framing.
-    This is intentionally lightweight for teaching usage.
+    v4 teaching client: stdio transport + tools/list + tools/call only.
     """
 
     def __init__(self, config: MCPServerConfig) -> None:
@@ -77,7 +81,6 @@ class StdioMCPClient:
             proc.stdin.write(self._build_frame(payload))
             await proc.stdin.drain()
 
-        # Minimal initialize handshake
         await send(
             {
                 "jsonrpc": "2.0",
@@ -140,8 +143,6 @@ class StdioMCPClient:
         result = data.get("result")
         if not isinstance(result, dict):
             return ""
-
-        # MCP content may be typed blocks; we flatten text content for loop tool message.
         content = result.get("content")
         if isinstance(content, list):
             chunks: List[str] = []
@@ -149,7 +150,6 @@ class StdioMCPClient:
                 if isinstance(item, dict) and item.get("type") == "text":
                     chunks.append(str(item.get("text", "")))
             return "\n".join(chunk for chunk in chunks if chunk)
-
         if "text" in result:
             return str(result["text"])
         return json.dumps(result, ensure_ascii=False)
@@ -157,19 +157,14 @@ class StdioMCPClient:
 
 class MCPManager:
     def __init__(self, server_configs: List[MCPServerConfig]) -> None:
+        # v4 keeps stdio-only behavior by design.
+        stdio_configs = [cfg for cfg in server_configs if (cfg.type or "stdio") == "stdio"]
         self.clients: Dict[str, StdioMCPClient] = {
-            cfg.name: StdioMCPClient(cfg) for cfg in server_configs
+            cfg.name: StdioMCPClient(cfg) for cfg in stdio_configs if cfg.command
         }
         self._tool_index: Dict[str, tuple[str, str, Dict[str, object], str]] = {}
 
     async def refresh_tools(self) -> Dict[str, Dict[str, object]]:
-        """
-        Returns:
-            mapping external_tool_name -> {
-                "description": str,
-                "parameters": dict
-            }
-        """
         self._tool_index.clear()
         exposed: Dict[str, Dict[str, object]] = {}
         for server_name, client in self.clients.items():

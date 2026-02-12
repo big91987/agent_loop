@@ -1,6 +1,8 @@
 # MCP Servers
 
-- `demo/simple_server.py`: stdio simple MCP server for v4/v5 validation and demos.
+- `demo/simple_server.py`: simple MCP server for v4/v4.1/v5 validation and demos.
+  - tools: `calculate`, `get_current_time`
+  - resources: `simple://about`, `simple://usage`
 
 Run manually (optional):
 

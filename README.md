@@ -1,6 +1,6 @@
 # Python Agent Loop Teaching Suite
 
-教学目标：用最小代码从 `v1`（纯对话）走到 `v2`（教学用基础工具）、`v3`（本地 CLI 工具），再到 `v4`（MCP）和 `v5`（Skill）。
+教学目标：用最小代码从 `v1`（纯对话）走到 `v2`（教学用基础工具）、`v3`（本地 CLI 工具），再到 `v4`（MCP）、`v4.1`（MCP + resources + 多传输）和 `v5`（Skill）。
 
 ## 目录
 
@@ -13,11 +13,12 @@
 - `loops/agent_loop_v1_basic.py`: v1 基础 loop
 - `loops/agent_loop_v2_tools.py`: v2 工具 loop
 - `loops/agent_loop_v3_tools.py`: v3 本地工具 loop
+- `loops/agent_loop_v4_1_mcp_tools.py`: v4.1 MCP 扩展 loop
 - `tests/`: v1/v2 测试
 
 ## 配置
 
-推荐使用 `configs/default.json` 或 `configs/v4_mcp_simple.json`。
+推荐使用 `configs/default.json`、`configs/v4_mcp_simple.json` 或 `configs/v4_1_mcp_simple.json`。
 
 配置字段：
 - `provider`: 供应商标识（教学版仅做信息保留）
@@ -26,8 +27,11 @@
 - `api_key`: 可选，直接填写 API Key（教学环境可用，生产不建议）
 - `api_key_env`: API Key 环境变量名（可选，默认 `OPENAI_API_KEY`）
 - `timeout_seconds`: 请求超时
-- `default_loop_version`: 默认 loop（`v1`、`v2`、`v3`、`v4`、`v5`）
-- `mcp_servers`: MCP 服务配置列表（v4）
+- `default_loop_version`: 默认 loop（`v1`、`v2`、`v3`、`v4`、`v4.1`、`v5`）
+- `mcp_servers`: MCP 服务配置列表（v4/v4.1）
+- `mcp_servers[].type`: 传输类型（`stdio`、`sse`、`streamable_http`）
+- `mcp_servers[].command/args/env`: `stdio` 传输字段
+- `mcp_servers[].url/message_url/headers`: `sse` 与 `streamable_http` 传输字段
 - `skills_dir`: Skill 根目录（v5）
 
 ## 运行 CLI
@@ -39,13 +43,14 @@ python3 cli.py --config ./configs/default.json --loop v1 --debug
 python3 cli.py --config ./configs/default.json --loop v3
 python3 cli.py --config ./configs/default.json --loop v3 --debug --log-dir ./logs
 python3 cli.py --config ./configs/v4_mcp_simple.json --loop v4
+python3 cli.py --config ./configs/v4_1_mcp_simple.json --loop v4.1
 ```
 
 交互命令：
-- `/loop v1|v2|v3|v4|v5`
+- `/loop v1|v2|v3|v4|v4.1|v5`
 - `/state`
 - `/quit`
-- `/mcp list|on|off|refresh`（仅 v4/v5）
+- `/mcp list|on|off|refresh`（仅 v4/v4.1/v5）
 - `/skill list|use <name>|off`（仅 v5）
 
 ## 日志
@@ -99,6 +104,8 @@ bash ./run-tests.sh
 ### v4
 - 基于 `V3ToolsLoop` 扩展（`V4MCPToolsLoop`）
 - 增加 MCP Server 对接，动态发现并调用 MCP tools
+- MCP client 实现：`core/mcp_client.py`（保持教学版 stdio + tools）
+- stdio 连接策略：每次请求独立启动子进程（教学简化）
 - CLI 支持：`/mcp list|on|off|refresh`
 
 v4 依赖的 `mcp_client` 原理（stdio）：
@@ -126,6 +133,50 @@ v4 示例 server（stdio）：
 }
 ```
 
+### v4.1
+- 基于 `V4MCPToolsLoop` 扩展（`V4_1MCPToolsLoop`）
+- MCP client 实现：`core/mcp_client_v4_1.py`（独立于 v4）
+- stdio 连接策略：长生命周期子进程复用，CLI 退出时回收
+- 在 v4 的 MCP tools 基础上，新增 resource 桥接工具：
+  - `mcp.<server>.resource_list`
+  - `mcp.<server>.resource_read`
+- `resource_read` 的函数描述生成规则：
+  - 优先使用 server 在 `resources/list` 返回的 resource `description`
+  - 若 server 未提供 `description`，回退到工程默认（hardcode）描述
+- 支持 MCP transport `type`：
+  - `stdio`
+  - `sse`
+  - `streamable_http`
+- 推荐配置：`configs/v4_1_mcp_simple.json`
+
+`mcp_servers[].type` 示例：
+
+```json
+{
+  "mcp_servers": [
+    {
+      "name": "simple",
+      "type": "stdio",
+      "command": "python3",
+      "args": ["./mcp_servers/demo/simple_server.py"]
+    },
+    {
+      "name": "remote_sse",
+      "type": "sse",
+      "url": "https://example.com/sse",
+      "message_url": "https://example.com/messages",
+      "headers": {"Authorization": "Bearer <token>"}
+    },
+    {
+      "name": "remote_http",
+      "type": "streamable_http",
+      "url": "https://example.com/mcp",
+      "headers": {"Authorization": "Bearer <token>"}
+    }
+  ]
+}
+```
+
 ### v5
 - 基于 `V4MCPToolsLoop` 扩展（`V5SkillToolsLoop`）
 - 增加 Skill 加载与激活，技能内容注入 system prompt
@@ -139,6 +190,7 @@ v4 示例 server（stdio）：
 | v2 | 教学工具闭环 | `calculate/get_current_time` 的 tool_call 执行与回填 | 已完成 |
 | v3 | CLI 工具闭环 | `read/write/edit/grep/find/ls` 本地执行与回填 | 已完成 |
 | v4 | MCP 支持 | 对接 MCP Server，动态发现并调用 MCP tools | 进行中 |
+| v4.1 | MCP resource + transport 扩展 | 支持 resources，支持 `stdio/sse/streamable_http` | 已完成 |
 | v5 | Skill 支持 | 加载技能目录，支持激活 skill 注入 system prompt | 进行中 |
 | v6 | 队列/中断等工程机制 | 消息队列、中断控制、运行时拆分 | 待实现 |
 

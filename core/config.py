@@ -52,27 +52,52 @@ def load_config(path: str) -> AppConfig:
 
     raw_mcp_servers = raw.get("mcp_servers", [])
     mcp_servers: List[MCPServerConfig] = []
+    supported_mcp_types = {"stdio", "sse", "streamable_http"}
     if isinstance(raw_mcp_servers, list):
         for item in raw_mcp_servers:
             if not isinstance(item, dict):
                 continue
             name = str(item.get("name", "")).strip()
-            command = str(item.get("command", "")).strip()
-            if not name or not command:
+            mcp_type = str(item.get("type", "stdio")).strip().lower() or "stdio"
+            if mcp_type not in supported_mcp_types:
                 continue
+            if not name:
+                continue
+
+            command = str(item.get("command", "")).strip()
             args_raw = item.get("args", [])
             args = [str(part) for part in args_raw] if isinstance(args_raw, list) else []
             env_raw = item.get("env", {})
             env: Dict[str, str] = {}
             if isinstance(env_raw, dict):
                 env = {str(k): str(v) for k, v in env_raw.items()}
+            headers_raw = item.get("headers", {})
+            headers: Dict[str, str] = {}
+            if isinstance(headers_raw, dict):
+                headers = {str(k): str(v) for k, v in headers_raw.items()}
+            url_raw = item.get("url")
+            url = str(url_raw).strip() if url_raw is not None else None
+            if url == "":
+                url = None
+            message_url_raw = item.get("message_url")
+            message_url = str(message_url_raw).strip() if message_url_raw is not None else None
+            if message_url == "":
+                message_url = None
             timeout = int(item.get("timeout_seconds", 30))
+            if mcp_type == "stdio" and not command:
+                continue
+            if mcp_type in {"sse", "streamable_http"} and not url:
+                continue
             mcp_servers.append(
                 MCPServerConfig(
                     name=name,
+                    type=mcp_type,
                     command=command,
                     args=args,
                     env=env,
+                    url=url,
+                    message_url=message_url,
+                    headers=headers,
                     timeout_seconds=timeout,
                 ),
             )

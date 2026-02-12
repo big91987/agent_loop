@@ -139,6 +139,57 @@ def handle_tools_call(request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]
     return err(request_id, -32601, f"Unknown tool: {name}")
 
 
+def handle_resources_list(request_id: Any) -> Dict[str, Any]:
+    return ok(
+        request_id,
+        {
+            "resources": [
+                {
+                    "uri": "simple://about",
+                    "name": "about",
+                    "description": "Basic description of this simple MCP server.",
+                    "mimeType": "text/plain",
+                },
+                {
+                    "uri": "simple://usage",
+                    "name": "usage",
+                    "description": "Quick usage guide for demo resources/tools.",
+                    "mimeType": "text/plain",
+                },
+            ],
+        },
+    )
+
+
+def handle_resources_read(request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+    uri = str(params.get("uri", "")).strip()
+    if uri == "simple://about":
+        return ok(
+            request_id,
+            {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "simple_server provides calculate/get_current_time tools and sample resources.",
+                    }
+                ]
+            },
+        )
+    if uri == "simple://usage":
+        return ok(
+            request_id,
+            {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Use resources/list then resources/read(uri) to fetch context before tool calls.",
+                    }
+                ]
+            },
+        )
+    return err(request_id, -32602, f"Unknown resource uri: {uri}")
+
+
 def main() -> int:
     while True:
         request = read_frame()
@@ -159,6 +210,12 @@ def main() -> int:
             continue
         if method == "tools/call":
             write_frame(handle_tools_call(request_id, params))
+            continue
+        if method == "resources/list":
+            write_frame(handle_resources_list(request_id))
+            continue
+        if method == "resources/read":
+            write_frame(handle_resources_read(request_id, params))
             continue
 
         write_frame(err(request_id, -32601, f"Unknown method: {method}"))

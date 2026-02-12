@@ -1,6 +1,6 @@
 # MCP 原理与教学实现说明
 
-本文档说明 `agent_loop` 在 `v4` 阶段引入 MCP（Model Context Protocol）的核心原理与当前实现方式。
+本文档说明 `agent_loop` 在 `v4/v4.1` 阶段引入 MCP（Model Context Protocol）的核心原理与当前实现方式。
 
 ## 1. MCP 解决什么问题
 
@@ -11,15 +11,20 @@ MCP 的目标是把这些外部能力标准化成“工具（tools）”，让�
 
 ## 2. 协议层概念（教学版）
 
-MCP 常见交互（stdio 传输）：
+MCP 常见交互：
 
 1. `initialize`：握手，声明协议能力。
 2. `tools/list`：查询服务端暴露的工具清单（名称、描述、输入 schema）。
 3. `tools/call`：按工具名 + 参数执行工具，拿到返回内容。
+4. `resources/list`：查询服务端暴露的资源清单（URI、描述、类型）。
+5. `resources/read`：按 URI 读取资源内容。
 
 在本项目里：
-- 客户端实现：`core/mcp_client.py`
+- v4 客户端实现：`core/mcp_client.py`
+- v4.1 客户端实现：`core/mcp_client_v4_1.py`
 - loop 接入：`loops/agent_loop_v4_mcp_tools.py`
+- v4.1 扩展：`loops/agent_loop_v4_1_mcp_tools.py`
+- 连接策略差异：v4 为教学简化（stdio 单请求单进程），v4.1 为工程化（stdio 持久进程复用）
 
 ## 3. 本项目的接入方式
 
@@ -27,13 +32,14 @@ MCP 常见交互（stdio 传输）：
 
 ### 3.1 配置
 
-可在 `configs/v4_mcp_simple.json` 中通过 `mcp_servers` 配置服务：
+可在 `configs/v4_1_mcp_simple.json` 中通过 `mcp_servers` 配置服务：
 
 ```json
 {
   "mcp_servers": [
     {
       "name": "simple",
+      "type": "stdio",
       "command": "python3",
       "args": ["./mcp_servers/demo/simple_server.py"],
       "env": {},
@@ -42,6 +48,11 @@ MCP 常见交互（stdio 传输）：
   ]
 }
 ```
+
+transport 通过 `mcp_servers[].type` 区分：
+- `stdio`
+- `sse`
+- `streamable_http`
 
 ### 3.2 工具映射
 
@@ -52,6 +63,9 @@ MCP 常见交互（stdio 传输）：
 
 本地工具名和 MCP 工具名会区分：  
 `mcp.<server_name>.<tool_name>`
+
+`v4.1` 在此基础上额外暴露 resource 桥接工具：  
+`mcp.<server_name>.resource_list`、`mcp.<server_name>.resource_read`
 
 ### 3.3 调用链路
 
@@ -87,7 +101,7 @@ MCP 常见交互（stdio 传输）：
 
 ## 6. CLI 操作
 
-在 `v4/v5` 中可用：
+在 `v4/v4.1/v5` 中可用：
 
 - `/mcp list`：查看当前可用 MCP 工具
 - `/mcp on`：启用 MCP
