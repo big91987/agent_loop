@@ -6,12 +6,12 @@
 - `v4_1_mcp_playwright.json`: Playwright MCP profile for browser automation in `v4.1`.
 - `v4_1_mcp_amap_node.json`: AMap MCP profile using Node.js I/O (`npx` + stdio) for `v4.1`.
 
-`mcp_servers[].type` supported values:
+`mcpServers.<name>.type` supported values:
 - `stdio`: use `command` + `args` + `env`
 - `sse`: use `url` (optional `message_url`) + `headers`
 - `streamable_http`: use `url` + `headers`
 
-`mcp_servers[].stdio_msg_format` (for `type=stdio`):
+`mcpServers.<name>.stdio_msg_format` (for `type=stdio`):
 - `auto` (default): try `line` first, fallback to `content-length`
 - `line`: newline-delimited JSON-RPC
 - `content-length`: Content-Length framed JSON-RPC

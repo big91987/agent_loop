@@ -158,8 +158,8 @@ class StdioMCPClient:
 
 class MCPManager:
     def __init__(self, server_configs: List[MCPServerConfig]) -> None:
-        # v4 keeps stdio-only behavior by design.
-        stdio_configs = [cfg for cfg in server_configs if (cfg.type or "stdio") == "stdio"]
+        # v4 keeps explicit stdio-only behavior by design (no auto transport inference).
+        stdio_configs = [cfg for cfg in server_configs if cfg.type == "stdio"]
         self.clients: Dict[str, StdioMCPClient] = {
             cfg.name: StdioMCPClient(cfg) for cfg in stdio_configs if cfg.command
         }

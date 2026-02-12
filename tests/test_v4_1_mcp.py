@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from core.config import load_config
+from core.mcp_client_v4_1 import _to_v41_config
 from core.mcp_transport_clients import StdioMCPClient
 from core.mcp_types import MCPServerConfig
 from core.types import AssistantResponse, ToolCall
@@ -93,25 +94,22 @@ class V4_1MCPTests(unittest.IsolatedAsyncioTestCase):
                         "provider": "openai",
                         "model_name": "gpt-4o-mini",
                         "base_url": "https://api.openai.com/v1",
-                        "mcp_servers": [
-                            {
-                                "name": "local",
+                        "mcpServers": {
+                            "local": {
                                 "type": "stdio",
                                 "command": "python3",
                                 "args": ["./server.py"],
                             },
-                            {
-                                "name": "remote_sse",
+                            "remote_sse": {
                                 "type": "sse",
                                 "url": "https://example.com/sse",
                                 "headers": {"Authorization": "Bearer token"},
                             },
-                            {
-                                "name": "remote_http",
+                            "remote_http": {
                                 "type": "streamable_http",
                                 "url": "https://example.com/mcp",
                             },
-                        ],
+                        },
                     },
                     ensure_ascii=True,
                 ),
@@ -124,6 +122,17 @@ class V4_1MCPTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(cfg.mcp_servers[1].type, "sse")
             self.assertEqual(cfg.mcp_servers[1].url, "https://example.com/sse")
             self.assertEqual(cfg.mcp_servers[2].type, "streamable_http")
+
+    def test_v4_1_type_inference_for_mcpservers_object_entries(self) -> None:
+        from types import SimpleNamespace
+
+        cfg_stdio = SimpleNamespace(name="pw", type="", command="npx", args=["-y", "@playwright/mcp"], url=None)
+        cfg_sse = SimpleNamespace(name="amap-sse", type="", command="", args=[], url="https://mcp.amap.com/sse?key=x")
+        cfg_http = SimpleNamespace(name="amap-http", type="", command="", args=[], url="https://mcp.amap.com/mcp?key=x")
+
+        self.assertEqual(_to_v41_config(cfg_stdio).type, "stdio")
+        self.assertEqual(_to_v41_config(cfg_sse).type, "sse")
+        self.assertEqual(_to_v41_config(cfg_http).type, "streamable_http")
 
     async def test_v4_1_resource_bridge_tool_roundtrip(self) -> None:
         manager = FakeMCPManager()

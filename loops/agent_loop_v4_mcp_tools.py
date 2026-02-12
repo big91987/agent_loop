@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Dict, List
 
 from core.mcp_client import MCPManager
@@ -23,6 +24,11 @@ class V4MCPToolsLoop(V3ToolsLoop):
         self.mcp_enabled = mcp_enabled and mcp_manager is not None
         self._mcp_tools: List[ToolSpec] = []
 
+    @staticmethod
+    def _print_mcp_call(tool_name: str, params: Dict[str, object]) -> None:
+        args = json.dumps(params, ensure_ascii=False, sort_keys=True)
+        print(f"[MCP CALL] {tool_name} args={args}")
+
     async def _rebuild_tools(self, *, refresh_mcp: bool) -> None:
         mcp_tools: List[ToolSpec] = []
         if self.mcp_enabled and self.mcp_manager:
@@ -37,6 +43,7 @@ class V4MCPToolsLoop(V3ToolsLoop):
                 description = str(meta.get("description", "MCP tool"))
 
                 async def _handler(params: Dict[str, object], ext_name: str = external_name) -> str:
+                    self._print_mcp_call(ext_name, params)
                     return await self.mcp_manager.call(ext_name, params)  # type: ignore[arg-type]
 
                 mcp_tools.append(

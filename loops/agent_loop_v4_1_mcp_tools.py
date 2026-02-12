@@ -51,6 +51,7 @@ class V4_1MCPToolsLoop(V4MCPToolsLoop):
 
             async def _list_handler(params: Dict[str, object], *, server: str = server_name) -> str:
                 _ = params
+                self._print_mcp_call(f"mcp.{server}.resource_list", {})
                 resources = await self.mcp_manager.list_resources(server)
                 return json.dumps(resources, ensure_ascii=False)
 
@@ -58,6 +59,7 @@ class V4_1MCPToolsLoop(V4MCPToolsLoop):
                 uri = str(params.get("uri", "")).strip()
                 if not uri:
                     return "Missing required argument: uri"
+                self._print_mcp_call(f"mcp.{server}.resource_read", {"uri": uri})
                 return await self.mcp_manager.read_resource(server, uri)
 
             bridge_tools.append(

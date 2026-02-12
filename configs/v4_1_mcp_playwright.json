@@ -6,10 +6,8 @@
   "api_key_env": "MINIMAX_API_KEY",
   "timeout_seconds": 60,
   "default_loop_version": "v4.1",
-  "mcp_servers": [
-    {
-      "name": "playwright",
-      "type": "stdio",
+  "mcpServers": {
+    "playwright": {
       "command": "npx",
       "args": [
         "-y",
@@ -18,6 +16,6 @@
       "env": {},
       "timeout_seconds": 120
     }
-  ],
+  },
   "skills_dir": "./skills"
 }

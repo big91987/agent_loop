@@ -26,7 +26,7 @@ MCP 常见交互：
 1. `line`（newline-delimited JSON-RPC）  
 2. `content-length`（`Content-Length` 头 + JSON body）
 
-`v4.1` 客户端支持 `mcp_servers[].stdio_msg_format`：
+`v4.1` 客户端支持 `mcpServers.<name>.stdio_msg_format`：
 - `line`
 - `content-length`
 - `auto`（默认，先 `line`，失败再 `content-length`）
@@ -49,6 +49,7 @@ MCP 常见交互：
 - loop 接入：`loops/agent_loop_v4_mcp_tools.py`
 - v4.1 扩展：`loops/agent_loop_v4_1_mcp_tools.py`
 - 连接策略差异：v4 为教学简化（stdio 单请求单进程），v4.1 为工程化（stdio 持久进程复用）
+- transport 差异：v4 仅支持显式 `type=stdio`；v4.1 支持显式 type + 缺省自动推断
 
 ## 3. 本项目的接入方式
 
@@ -56,24 +57,23 @@ MCP 常见交互：
 
 ### 3.1 配置
 
-可在 `configs/v4_1_mcp_simple.json` 中通过 `mcp_servers` 配置服务：
+可在 `configs/v4_1_mcp_simple.json` 中通过 `mcpServers` 配置服务：
 
 ```json
 {
-  "mcp_servers": [
-    {
-      "name": "simple",
+  "mcpServers": {
+    "simple": {
       "type": "stdio",
       "command": "python3",
       "args": ["./mcp_servers/demo/simple_server.py"],
       "env": {},
       "timeout_seconds": 30
     }
-  ]
+  }
 }
 ```
 
-transport 通过 `mcp_servers[].type` 区分：
+transport 通过 `mcpServers.<name>.type` 区分：
 - `stdio`
 - `sse`
 - `streamable_http`
@@ -135,14 +135,14 @@ transport 通过 `mcp_servers[].type` 区分：
 ## 7. 常见问题排查
 
 1. `/mcp list` 为空  
-  - 检查 `mcp_servers` 是否配置正确  
+  - 检查 `mcpServers` 是否配置正确  
   - 检查 server 进程是否可启动  
   - 检查 `tools/list` 是否实现
 
 2. 调用超时  
   - 提高 `timeout_seconds`  
   - 检查 server 侧是否阻塞
-  - 对 `stdio` server，尝试设置 `stdio_msg_format`：
+  - 对 `stdio` server，尝试设置 `mcpServers.<name>.stdio_msg_format`：
     - 先 `auto`
     - 不稳定时手动指定 `line` 或 `content-length`
 

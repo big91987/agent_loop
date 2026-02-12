@@ -28,11 +28,11 @@
 - `api_key_env`: API Key 环境变量名（可选，默认 `OPENAI_API_KEY`）
 - `timeout_seconds`: 请求超时
 - `default_loop_version`: 默认 loop（`v1`、`v2`、`v3`、`v4`、`v4.1`、`v5`）
-- `mcp_servers`: MCP 服务配置列表（v4/v4.1）
-- `mcp_servers[].type`: 传输类型（`stdio`、`sse`、`streamable_http`）
-- `mcp_servers[].command/args/env`: `stdio` 传输字段
-- `mcp_servers[].stdio_msg_format`: `stdio` 消息格式（`auto`、`line`、`content-length`，默认 `auto`）
-- `mcp_servers[].url/message_url/headers`: `sse` 与 `streamable_http` 传输字段
+- `mcpServers`: MCP 服务配置（对象映射：`name -> server config`）
+- `mcpServers.<name>.type`: 传输类型（`stdio`、`sse`、`streamable_http`）
+- `mcpServers.<name>.command/args/env`: `stdio` 传输字段
+- `mcpServers.<name>.stdio_msg_format`: `stdio` 消息格式（`auto`、`line`、`content-length`，默认 `auto`）
+- `mcpServers.<name>.url/message_url/headers`: `sse` 与 `streamable_http` 传输字段
 - `skills_dir`: Skill 根目录（v5）
 
 ## 运行 CLI
@@ -106,8 +106,12 @@ bash ./run-tests.sh
 - 基于 `V3ToolsLoop` 扩展（`V4MCPToolsLoop`）
 - 增加 MCP Server 对接，动态发现并调用 MCP tools
 - MCP client 实现：`core/mcp_client.py`（保持教学版 stdio + tools）
+- transport 策略：仅支持显式 `type=stdio`（不做自动推断）
 - stdio 连接策略：每次请求独立启动子进程（教学简化）
 - CLI 支持：`/mcp list|on|off|refresh`
+- 流程图：见 `docs/loop_flows_mermaid.md`
+
+![v4 flow](./docs/diagrams/v4.svg)
 
 v4 依赖的 `mcp_client` 原理（stdio）：
 - `core/mcp_client.py` 通过子进程启动 MCP server（`command + args`）。
@@ -122,21 +126,23 @@ v4 示例 server（stdio）：
 
 ```json
 {
-  "mcp_servers": [
-    {
+  "mcpServers": {
+    "simple": {
       "name": "simple",
+      "type": "stdio",
       "command": "python3",
       "args": ["./mcp_servers/demo/simple_server.py"],
       "env": {},
       "timeout_seconds": 30
     }
-  ]
+  }
 }
 ```
 
 ### v4.1
 - 基于 `V4MCPToolsLoop` 扩展（`V4_1MCPToolsLoop`）
 - MCP client 实现：`core/mcp_client_v4_1.py`（独立于 v4）
+- transport 策略：支持自动推断（显式 `type` 优先，缺省时按 `command/url` 推断）
 - stdio 连接策略：长生命周期子进程复用，CLI 退出时回收
 - stdio 消息格式策略：支持 `line` / `content-length`，默认 `auto`（先 `line`，失败再 `content-length`）
 - 在 v4 的 MCP tools 基础上，新增 resource 桥接工具：
@@ -150,13 +156,16 @@ v4 示例 server（stdio）：
   - `sse`
   - `streamable_http`
 - 推荐配置：`configs/v4_1_mcp_simple.json`
+- 流程图：见 `docs/loop_flows_mermaid.md`
+
+![v4.1 flow](./docs/diagrams/v4_1.svg)
 
 `stdio_msg_format` 示例：
 
 ```json
 {
-  "mcp_servers": [
-    {
+  "mcpServers": {
+    "playwright": {
       "name": "playwright",
       "type": "stdio",
       "command": "npx",
@@ -164,35 +173,35 @@ v4 示例 server（stdio）：
       "stdio_msg_format": "auto",
       "timeout_seconds": 120
     }
-  ]
+  }
 }
 ```
 
-`mcp_servers[].type` 示例：
+`mcpServers.<name>.type` 示例：
 
 ```json
 {
-  "mcp_servers": [
-    {
+  "mcpServers": {
+    "simple": {
       "name": "simple",
       "type": "stdio",
       "command": "python3",
       "args": ["./mcp_servers/demo/simple_server.py"]
     },
-    {
+    "remote_sse": {
       "name": "remote_sse",
       "type": "sse",
       "url": "https://example.com/sse",
       "message_url": "https://example.com/messages",
       "headers": {"Authorization": "Bearer <token>"}
     },
-    {
+    "remote_http": {
       "name": "remote_http",
       "type": "streamable_http",
       "url": "https://example.com/mcp",
       "headers": {"Authorization": "Bearer <token>"}
     }
-  ]
+  }
 }
 ```
 

@@ -50,19 +50,20 @@ def load_config(path: str) -> AppConfig:
     if api_key_env is None:
         api_key_env = "OPENAI_API_KEY"
 
-    raw_mcp_servers = raw.get("mcp_servers", [])
+    raw_mcp_servers = raw.get("mcpServers", {})
     mcp_servers: List[MCPServerConfig] = []
     supported_mcp_types = {"stdio", "sse", "streamable_http"}
     supported_stdio_msg_formats = {"auto", "line", "content-length"}
-    if isinstance(raw_mcp_servers, list):
-        for item in raw_mcp_servers:
-            if not isinstance(item, dict):
-                continue
-            name = str(item.get("name", "")).strip()
-            mcp_type = str(item.get("type", "stdio")).strip().lower() or "stdio"
-            if mcp_type not in supported_mcp_types:
-                continue
+    if isinstance(raw_mcp_servers, dict):
+        for key, value in raw_mcp_servers.items():
+            name = str(key).strip()
+            item = value if isinstance(value, dict) else {}
             if not name:
+                continue
+
+            mcp_type_raw = item.get("type")
+            mcp_type = str(mcp_type_raw).strip().lower() if mcp_type_raw is not None else ""
+            if mcp_type and mcp_type not in supported_mcp_types:
                 continue
 
             command = str(item.get("command", "")).strip()
@@ -89,10 +90,15 @@ def load_config(path: str) -> AppConfig:
             if stdio_msg_format not in supported_stdio_msg_formats:
                 stdio_msg_format = "auto"
             timeout = int(item.get("timeout_seconds", 30))
+
+            # v4 uses explicit/legacy stdio behavior; v4.1 may infer later in mcp_client_v4_1.
             if mcp_type == "stdio" and not command:
                 continue
             if mcp_type in {"sse", "streamable_http"} and not url:
                 continue
+            if not mcp_type and not command and not url:
+                continue
+
             mcp_servers.append(
                 MCPServerConfig(
                     name=name,

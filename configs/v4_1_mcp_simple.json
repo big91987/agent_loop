@@ -6,15 +6,14 @@
   "api_key_env": "MINIMAX_API_KEY",
   "timeout_seconds": 60,
   "default_loop_version": "v4.1",
-  "mcp_servers": [
-    {
-      "name": "simple",
+  "mcpServers": {
+    "simple": {
       "type": "stdio",
       "command": "python3",
       "args": ["./mcp_servers/demo/simple_server.py"],
       "env": {},
       "timeout_seconds": 30
     }
-  ],
+  },
   "skills_dir": "./skills"
 }

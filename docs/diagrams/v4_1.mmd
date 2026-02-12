@@ -1,0 +1,18 @@
+flowchart LR
+    U["User Input"] --> M["Append user message"]
+    M --> L1["Call LLM with v3 + MCP + resource bridge tools"]
+    L1 --> C{"Has tool_calls?"}
+    C -- "No" --> A1["Append assistant final"]
+    A1 --> O["Return final text"]
+    O --> N2["Next turn"]
+    N2 --> U
+    C -- "Yes" --> K{"Tool source?"}
+    K -- "Local" --> N["Inject default cwd if missing"]
+    N --> T["Run local tool (read/write/edit/grep/find/ls)"]
+    K -- "MCP tool" --> MT["Print MCP call and run mcp.<server>.<tool>"]
+    K -- "MCP resource" --> MR["Print MCP call and run resource_list/resource_read"]
+    T --> R["Append tool result message"]
+    MT --> R
+    MR --> R
+    R --> L2["Call LLM again"]
+    L2 --> C
