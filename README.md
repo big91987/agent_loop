@@ -4,7 +4,8 @@
 
 ## 目录
 
-- `config.json`: 公共模型配置（OpenAI 风格）
+- `configs/`: 配置文件目录（可放多份 profile）
+- `config.json`: 兼容保留（建议使用 `configs/default.json`）
 - `cli.py`: 教学 CLI 入口
 - `core/`: 配置、客户端抽象、工具定义
 - `tools/`: 工具定义（每个 tool 一个文件）
@@ -16,14 +17,16 @@
 
 ## 配置
 
-`config.json` 字段：
+推荐使用 `configs/default.json` 或 `configs/v4_mcp_simple.json`。
+
+配置字段：
 - `provider`: 供应商标识（教学版仅做信息保留）
 - `model_name`: 模型名
 - `base_url`: OpenAI-compatible API 地址
 - `api_key`: 可选，直接填写 API Key（教学环境可用，生产不建议）
 - `api_key_env`: API Key 环境变量名（可选，默认 `OPENAI_API_KEY`）
 - `timeout_seconds`: 请求超时
-- `default_loop_version`: 默认 loop（`v1`、`v2` 或 `v3`）
+- `default_loop_version`: 默认 loop（`v1`、`v2`、`v3`、`v4`、`v5`）
 - `mcp_servers`: MCP 服务配置列表（v4）
 - `skills_dir`: Skill 根目录（v5）
 
@@ -31,10 +34,11 @@
 
 ```bash
 cd /Users/admin/work/agent_loop
-python3 cli.py --config ./config.json --loop v1
-python3 cli.py --config ./config.json --loop v1 --debug
-python3 cli.py --config ./config.json --loop v3
-python3 cli.py --config ./config.json --loop v3 --debug --log-dir ./logs
+python3 cli.py --config ./configs/default.json --loop v1
+python3 cli.py --config ./configs/default.json --loop v1 --debug
+python3 cli.py --config ./configs/default.json --loop v3
+python3 cli.py --config ./configs/default.json --loop v3 --debug --log-dir ./logs
+python3 cli.py --config ./configs/v4_mcp_simple.json --loop v4
 ```
 
 交互命令：
@@ -104,17 +108,17 @@ v4 依赖的 `mcp_client` 原理（stdio）：
 - 当前实现是教学版：按请求启动子进程并通信；后续工程化可升级为长连接复用。
 
 v4 示例 server（stdio）：
-- 示例文件：`examples/mcp_server.py`
+- 示例文件：`mcp_servers/demo/simple_server.py`
 - 示例工具：`calculate`、`get_current_time`（与 v2 教学工具一致）
-- 可在 `config.json` 配置：
+- 可在配置中写：
 
 ```json
 {
   "mcp_servers": [
     {
-      "name": "demo",
+      "name": "simple",
       "command": "python3",
-      "args": ["./examples/mcp_server.py"],
+      "args": ["./mcp_servers/demo/simple_server.py"],
       "env": {},
       "timeout_seconds": 30
     }

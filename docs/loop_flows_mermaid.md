@@ -3,9 +3,9 @@
 本文档用于教学展示 `v1/v2/v3` 的执行流程差异。  
 建议用支持 Mermaid 的 Markdown 工具查看（如 GitHub、Typora Mermaid 插件、VSCode Mermaid 预览插件）。  
 若当前编辑器不支持 Mermaid，可直接查看同目录下已渲染的 SVG：
-- `python-agent-suite/docs/diagrams/v1.svg`
-- `python-agent-suite/docs/diagrams/v2.svg`
-- `python-agent-suite/docs/diagrams/v3.svg`
+- `docs/diagrams/v1.svg`
+- `docs/diagrams/v2.svg`
+- `docs/diagrams/v3.svg`
 
 ## v1: Basic Chat Loop
 

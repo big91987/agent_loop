@@ -1,6 +1,6 @@
 # MCP 原理与教学实现说明
 
-本文档说明 `python-agent-suite` 在 `v4` 阶段引入 MCP（Model Context Protocol）的核心原理与当前实现方式。
+本文档说明 `agent_loop` 在 `v4` 阶段引入 MCP（Model Context Protocol）的核心原理与当前实现方式。
 
 ## 1. MCP 解决什么问题
 
@@ -18,22 +18,24 @@ MCP 常见交互（stdio 传输）：
 3. `tools/call`：按工具名 + 参数执行工具，拿到返回内容。
 
 在本项目里：
-- 客户端实现：`python-agent-suite/core/mcp_client.py`
-- loop 接入：`python-agent-suite/loops/agent_loop_v3_tools.py`
+- 客户端实现：`core/mcp_client.py`
+- loop 接入：`loops/agent_loop_v4_mcp_tools.py`
 
 ## 3. 本项目的接入方式
 
+详细的“特定 server（高德示例）从 MCP tools/resources 转换到模型 function call”流程见：`mcp_servers/README.md`。
+
 ### 3.1 配置
 
-`config.json` 中通过 `mcp_servers` 配置服务：
+可在 `configs/v4_mcp_simple.json` 中通过 `mcp_servers` 配置服务：
 
 ```json
 {
   "mcp_servers": [
     {
-      "name": "example",
+      "name": "simple",
       "command": "python3",
-      "args": ["./mcp_server.py"],
+      "args": ["./mcp_servers/demo/simple_server.py"],
       "env": {},
       "timeout_seconds": 30
     }
@@ -43,7 +45,7 @@ MCP 常见交互（stdio 传输）：
 
 ### 3.2 工具映射
 
-`v3` loop 会在 MCP 启用时做两件事：
+`v4/v5` loop 会在 MCP 启用时做两件事：
 
 1. 调 `tools/list` 拉取 MCP 工具定义。
 2. 把 MCP 工具包装成 `ToolSpec` 并并入本地工具集。
@@ -85,7 +87,7 @@ MCP 常见交互（stdio 传输）：
 
 ## 6. CLI 操作
 
-在 `v3` 中可用：
+在 `v4/v5` 中可用：
 
 - `/mcp list`：查看当前可用 MCP 工具
 - `/mcp on`：启用 MCP

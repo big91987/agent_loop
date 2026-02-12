@@ -22,7 +22,7 @@ async def _read_line(prompt: str) -> str:
 
 async def async_main() -> int:
     parser = argparse.ArgumentParser(description="Teaching CLI for agent loop v1-v5")
-    parser.add_argument("--config", default="./config.json")
+    parser.add_argument("--config", default="./configs/default.json")
     parser.add_argument("--loop", choices=["v1", "v2", "v3", "v4", "v5"], default=None)
     parser.add_argument("--debug", action="store_true", help="Reserved verbose flag (payload logs are always written)")
     parser.add_argument("--log-dir", default="./logs", help="Directory for session log files")

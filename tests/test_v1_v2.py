@@ -45,7 +45,7 @@ class FakeClientV2:
 
 class AgentLoopTeachingSuiteTests(unittest.IsolatedAsyncioTestCase):
     def test_load_config(self) -> None:
-        cfg = load_config("./config.json")
+        cfg = load_config("./configs/default.json")
         self.assertGreater(len(cfg.provider), 0)
         self.assertGreater(len(cfg.model_name), 0)
         self.assertGreater(len(cfg.base_url), 0)

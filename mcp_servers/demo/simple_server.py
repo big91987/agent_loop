@@ -58,7 +58,7 @@ def handle_initialize(request_id: Any) -> Dict[str, Any]:
                 "tools": {},
             },
             "serverInfo": {
-                "name": "python-agent-suite-demo-mcp",
+                "name": "agent-loop-simple-mcp",
                 "version": "0.1.0",
             },
         },
