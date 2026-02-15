@@ -18,7 +18,7 @@
 
 ## 配置
 
-推荐使用 `configs/default.json`、`configs/v4_mcp_simple.json` 或 `configs/v4_1_mcp_simple.json`。
+推荐使用 `configs/default.json`、`configs/v4_mcp_simple.json`、`configs/v4_1_mcp_simple.json` 或 `configs/v5_skill_pi_style.json`。
 
 配置字段：
 - `provider`: 供应商标识（教学版仅做信息保留）
@@ -45,6 +45,7 @@ python3 cli.py --config ./configs/default.json --loop v3
 python3 cli.py --config ./configs/default.json --loop v3 --debug --log-dir ./logs
 python3 cli.py --config ./configs/v4_mcp_simple.json --loop v4
 python3 cli.py --config ./configs/v4_1_mcp_simple.json --loop v4.1
+python3 cli.py --config ./configs/v5_skill_pi_style.json --loop v5
 ```
 
 交互命令：
@@ -207,8 +208,55 @@ v4 示例 server（stdio）：
 
 ### v5
 - 基于 `V4MCPToolsLoop` 扩展（`V5SkillToolsLoop`）
-- 增加 Skill 加载与激活，技能内容注入 system prompt
+- 采用渐进式披露（pi-mono 风格）：
+  - system prompt 只注入 `<available_skills>` 元信息（name/description/location）
+  - 通过 `read_skill(name)` 工具按需加载 `SKILL.md` 正文
+- `/skill use <name>` 仅设置“偏好技能”提示，不再把全文直接塞进 system prompt
 - CLI 支持：`/skill list|use <name>|off`
+- Skill 原理与实现：`docs/skill_principles.md`
+- v5 注入报文片段（当前实现，简化）：
+
+```json
+{
+  "model": "MiniMax-M2.5",
+  "messages": [
+    {
+      "role": "system",
+      "content": "...\n<available_skills>\n  <skill>\n    <name>pptx</name>\n    <description>...</description>\n    <location>/Users/admin/.claude/skills/pptx/SKILL.md</location>\n  </skill>\n</available_skills>"
+    },
+    { "role": "user", "content": "做 3 页 ppt 讲述本草纲目" }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "read_skill",
+        "description": "Load full instructions for a skill by name.",
+        "parameters": {
+          "type": "object",
+          "properties": { "name": { "type": "string" } },
+          "required": ["name"],
+          "additionalProperties": false
+        }
+      }
+    }
+  ],
+  "tool_choice": "auto"
+}
+```
+
+- v5 loop 流程图：`docs/diagrams/v5_skill_injection.svg`
+
+![v5 skill flow](./docs/diagrams/v5_skill_injection.svg)
+
+### v5 方案选择（主流对比）
+
+- deepagents：skills 元信息主要在 system，`skill` 工具负责加载正文
+- opencode：skills 元信息主要放在 `skill` 工具描述里，命中后返回 `<skill_content>`
+- pi-mono：system 放 `<available_skills>`，命中后用 `read` 读取 `SKILL.md`
+
+当前项目选择：**pi-mono 风格**。  
+原因：教学上更直观，能清楚展示“元信息常驻 + 正文按需读取”的渐进式披露链路。
 
 ## TODO（基于 PRD 的实现计划）
 
@@ -225,3 +273,5 @@ v4 示例 server（stdio）：
 ## 文档
 
 - MCP 原理与实现说明：`docs/mcp_principles.md`
+- Skill 原理与实现说明：`docs/skill_principles.md`
+- DeepAgents 中间件机制说明：`docs/deepagents_principles.md`

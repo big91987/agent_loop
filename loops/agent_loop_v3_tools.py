@@ -26,12 +26,34 @@ class V3ToolsLoop(BaseAgentLoop):
         self.default_tool_cwd = default_tool_cwd
         self._tool_registry: Dict[str, ToolSpec] = build_tool_registry(self.tools)
 
+    @staticmethod
+    def _summarize_text(text: str, *, limit: int = 120) -> str:
+        one_line = " ".join(text.split())
+        if len(one_line) <= limit:
+            return one_line
+        return f"{one_line[:limit]}..."
+
+    @classmethod
+    def _print_tool_call(cls, name: str, args: Dict[str, object]) -> None:
+        args_text = json.dumps(args, ensure_ascii=False, sort_keys=True)
+        print(f"[TOOL CALL] {name} args={cls._summarize_text(args_text, limit=160)}")
+
+    @classmethod
+    def _print_tool_result(cls, name: str, output: str) -> None:
+        summary = cls._summarize_text(output)
+        print(f"[TOOL RESULT] {name} {summary}")
+
     async def run_turn(self, user_input: str) -> str:
         self.state.messages.append({"role": "user", "content": user_input})
         final_text = ""
+        hit_round_limit = True
 
-        for _ in range(self.max_tool_rounds):
+        for round_index in range(self.max_tool_rounds):
             response = await self._call_llm(tools=self.tools)
+            print(f"\n[ROUND {round_index + 1}]")
+            if response.text.strip():
+                print("[MODEL]")
+                print(response.text.strip())
 
             assistant_message = {"role": "assistant", "content": response.text}
             if response.tool_calls:
@@ -50,17 +72,20 @@ class V3ToolsLoop(BaseAgentLoop):
 
             if not response.tool_calls:
                 final_text = response.text
+                hit_round_limit = False
                 break
 
             for call in response.tool_calls:
                 tool = self._tool_registry.get(call.name)
                 if not tool:
                     tool_output = f"Tool not found: {call.name}"
+                    self._print_tool_call(call.name, call.arguments)
                 else:
                     call_args = dict(call.arguments)
                     # v3 teaching point: CLI-like tools often need cwd; we inject default cwd here.
                     if call.name in self.tool_names and "cwd" not in call_args and self.default_tool_cwd:
                         call_args["cwd"] = self.default_tool_cwd
+                    self._print_tool_call(call.name, call_args)
                     try:
                         maybe_output = tool.handler(call_args)
                         if inspect.isawaitable(maybe_output):
@@ -69,6 +94,7 @@ class V3ToolsLoop(BaseAgentLoop):
                             tool_output = str(maybe_output)
                     except Exception as err:  # noqa: BLE001
                         tool_output = f"Tool execution error: {err}"
+                self._print_tool_result(call.name, tool_output)
 
                 self.state.messages.append(
                     {
@@ -78,5 +104,13 @@ class V3ToolsLoop(BaseAgentLoop):
                         "content": tool_output,
                     },
                 )
+
+        if hit_round_limit and not final_text:
+            final_text = (
+                f"[loop warning] reached max_tool_rounds={self.max_tool_rounds}; "
+                "the model kept issuing tool calls and did not produce a final text answer. "
+                "Try asking it to summarize progress or continue from current state."
+            )
+            self.state.messages.append({"role": "assistant", "content": final_text})
 
         return final_text

@@ -1,0 +1,15 @@
+flowchart LR
+    U["User Input"] --> R["run_turn()"]
+    R --> A["Compose system prompt: base + available_skills metadata"]
+    A --> B{"preferred skill set ?"}
+    B -- "No" --> C["Keep metadata only"]
+    B -- "Yes" --> D["Append preferred-skill hint (no full content)"]
+    C --> E["Call parent loop (v4 flow)"]
+    D --> E
+    E --> F["LLM decides if skill is needed"]
+    F --> G{"Need skill content ?"}
+    G -- "No" --> H["Use normal tools/MCP tools"]
+    G -- "Yes" --> I["Call read_skill(name)"]
+    I --> J["Tool returns <skill ...>SKILL.md</skill>"]
+    J --> H
+    H --> O["Return assistant text"]

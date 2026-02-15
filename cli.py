@@ -81,6 +81,7 @@ async def async_main() -> int:
             client=client,
             model_name=cfg.model_name,
             timeout_seconds=cfg.timeout_seconds,
+            max_tool_rounds=50,
             default_tool_cwd=".",
             mcp_manager=mcp_manager_v4,
             mcp_enabled=bool(cfg.mcp_servers),
