@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
-from typing import Dict, List, Set
+from typing import Callable, Dict, List, Set
 
 from core.types import ToolSpec
 from tools.registry import build_tool_registry, tool_specs_for_names
@@ -16,6 +16,8 @@ class V3ToolsLoop(BaseAgentLoop):
         *,
         max_tool_rounds: int = 8,
         default_tool_cwd: str | None = None,
+        verbose: bool = True,
+        trace_callback: Callable[[str], None] | None = None,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
@@ -24,6 +26,8 @@ class V3ToolsLoop(BaseAgentLoop):
         self.tools: List[ToolSpec] = tool_specs_for_names(self.tool_names)
         self.max_tool_rounds = max_tool_rounds
         self.default_tool_cwd = default_tool_cwd
+        self.verbose = verbose
+        self.trace_callback = trace_callback
         self._tool_registry: Dict[str, ToolSpec] = build_tool_registry(self.tools)
 
     @staticmethod
@@ -33,15 +37,13 @@ class V3ToolsLoop(BaseAgentLoop):
             return one_line
         return f"{one_line[:limit]}..."
 
-    @classmethod
-    def _print_tool_call(cls, name: str, args: Dict[str, object]) -> None:
+    def _print_tool_call(self, name: str, args: Dict[str, object]) -> None:
         args_text = json.dumps(args, ensure_ascii=False, sort_keys=True)
-        print(f"[TOOL CALL] {name} args={cls._summarize_text(args_text, limit=160)}")
+        self._emit_trace(f"[TOOL CALL] {name} args={self._summarize_text(args_text, limit=160)}")
 
-    @classmethod
-    def _print_tool_result(cls, name: str, output: str) -> None:
-        summary = cls._summarize_text(output)
-        print(f"[TOOL RESULT] {name} {summary}")
+    def _print_tool_result(self, name: str, output: str) -> None:
+        summary = self._summarize_text(output)
+        self._emit_trace(f"[TOOL RESULT] {name} {summary}")
 
     async def run_turn(self, user_input: str) -> str:
         self.state.messages.append({"role": "user", "content": user_input})
@@ -49,11 +51,23 @@ class V3ToolsLoop(BaseAgentLoop):
         hit_round_limit = True
 
         for round_index in range(self.max_tool_rounds):
-            response = await self._call_llm(tools=self.tools)
-            print(f"\n[ROUND {round_index + 1}]")
-            if response.text.strip():
+            if self.verbose:
+                print(f"\n[ROUND {round_index + 1}]")
                 print("[MODEL]")
-                print(response.text.strip())
+            streamed = False
+
+            def _on_text_delta(delta: str) -> None:
+                nonlocal streamed
+                streamed = True
+                if self.verbose:
+                    print(delta, end="", flush=True)
+
+            response = await self._call_llm(tools=self.tools, on_text_delta=_on_text_delta)
+            if self.verbose:
+                if streamed:
+                    print()
+                elif response.text.strip():
+                    print(response.text.strip())
 
             assistant_message = {"role": "assistant", "content": response.text}
             if response.tool_calls:
@@ -114,3 +128,8 @@ class V3ToolsLoop(BaseAgentLoop):
             self.state.messages.append({"role": "assistant", "content": final_text})
 
         return final_text
+    def _emit_trace(self, line: str) -> None:
+        if self.verbose:
+            print(line)
+        if self.trace_callback is not None:
+            self.trace_callback(line)

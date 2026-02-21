@@ -5,7 +5,9 @@ import argparse
 import asyncio
 import json
 from pathlib import Path
-from typing import List
+import shutil
+import textwrap
+from typing import Any, List
 
 from core.client import OpenAICompatClient
 from core.config import load_config
@@ -20,9 +22,201 @@ try:
 except Exception:  # noqa: BLE001
     readline = None  # type: ignore[assignment]
 
+try:
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.key_binding import KeyBindings
+except Exception:  # noqa: BLE001
+    PromptSession = None  # type: ignore[assignment]
+    KeyBindings = None  # type: ignore[assignment]
+
 
 async def _read_line(prompt: str) -> str:
     return await asyncio.to_thread(input, prompt)
+
+
+def _build_prompt_session(ui: "RefreshUI") -> Any | None:
+    if PromptSession is None or KeyBindings is None:
+        return None
+    kb = KeyBindings()
+
+    @kb.add("escape", "k")
+    def _page_up(event: Any) -> None:  # noqa: ANN401
+        ui.page_up()
+        event.app.invalidate()
+
+    @kb.add("escape", "j")
+    def _page_down(event: Any) -> None:  # noqa: ANN401
+        ui.page_down()
+        event.app.invalidate()
+
+    @kb.add("escape", "0")
+    def _page_end(event: Any) -> None:  # noqa: ANN401
+        ui.page_end()
+        event.app.invalidate()
+
+    return PromptSession(key_bindings=kb)
+
+
+class RefreshUI:
+    def __init__(self, *, enabled: bool, model_name: str, log_path: str, max_lines: int = 18) -> None:
+        self.enabled = enabled
+        self.model_name = model_name
+        self.log_path = log_path
+        self.max_lines = max_lines
+        self.session_id = "-"
+        self.session_file = "-"
+        self.token_line = "[TOKENS] no LLM call yet"
+        self.activity_status = "Activity: window(p=0 c=0 t=0) | session(p=0 c=0 t=0) | source=none"
+        self.dialogue: list[tuple[str, str]] = []
+        self.output_lines: list[str] = []
+        self.dialogue_page = 0
+        self._last_dialogue_page_total = 1
+
+    def set_session(self, session_id: str, session_file: str) -> None:
+        self.session_id = session_id
+        self.session_file = session_file
+
+    def set_token_line(self, line: str) -> None:
+        self.token_line = line
+
+    def set_activity_status(self, line: str) -> None:
+        self.activity_status = line
+
+    def add(self, text: str) -> None:
+        if self.enabled:
+            lines = text.splitlines() if text else [""]
+            self.output_lines = lines[:200]
+            self.render()
+            return
+        print(text)
+
+    def add_dialogue(self, role: str, text: str) -> None:
+        self.dialogue.append((role, text if text else ""))
+        self.dialogue = self.dialogue[-60:]
+        self.dialogue_page = 0
+        if self.enabled:
+            self.render()
+        else:
+            print(f"[{role}] {text}")
+
+    def hydrate_dialogue_from_messages(self, messages: List[Message], *, max_messages: int = 12) -> None:
+        self.dialogue = []
+        tail = messages[-max_messages:]
+        for msg in tail:
+            role = str(msg.get("role"))
+            if role not in {"user", "assistant"}:
+                continue
+            content = _message_content_to_text(msg.get("content", ""))
+            self.dialogue.append((role.upper(), content))
+        self.dialogue = self.dialogue[-60:]
+        self.dialogue_page = 0
+        if self.enabled:
+            self.render()
+
+    def page_up(self) -> None:
+        self.dialogue_page = min(self.dialogue_page + 1, max(0, self._last_dialogue_page_total - 1))
+        if self.enabled:
+            self.render()
+
+    def page_down(self) -> None:
+        self.dialogue_page = max(0, self.dialogue_page - 1)
+        if self.enabled:
+            self.render()
+
+    def page_end(self) -> None:
+        self.dialogue_page = 0
+        if self.enabled:
+            self.render()
+
+    def _render_dialogue_lines(self, width: int, height: int) -> list[str]:
+        if height <= 0:
+            return []
+        lines: list[str] = []
+        body_width = max(20, width - 2)
+        for role, content in self.dialogue:
+            prefix = f"[{role}] "
+            raw_lines = content.splitlines() or [""]
+            first_line = True
+            for raw in raw_lines:
+                wrapped = textwrap.wrap(raw, width=max(10, body_width - len(prefix))) or [""]
+                for part in wrapped:
+                    lines.append(f"{prefix if first_line else ' ' * len(prefix)}{part}")
+                    first_line = False
+        if not lines:
+            self._last_dialogue_page_total = 1
+            return [""] * height
+
+        page_size = max(1, height)
+        total_pages = max(1, (len(lines) + page_size - 1) // page_size)
+        self._last_dialogue_page_total = total_pages
+        self.dialogue_page = min(self.dialogue_page, total_pages - 1)
+
+        start_from_end = self.dialogue_page * page_size
+        end_idx = max(0, len(lines) - start_from_end)
+        start_idx = max(0, end_idx - page_size)
+        page_lines = lines[start_idx:end_idx]
+
+        if len(page_lines) < height:
+            return page_lines + ([""] * (height - len(page_lines)))
+        return page_lines
+
+    def render(self) -> None:
+        if not self.enabled:
+            return
+        size = shutil.get_terminal_size((120, 36))
+        width = max(60, size.columns)
+        total_rows = max(20, size.lines)
+        sep = "-" * width
+        header_lines = [
+            f"agent-loop v6 | model={self.model_name}",
+            f"log: {self.log_path}",
+            f"session: {self.session_id} ({self.session_file})",
+            "Commands: /quit /state /tokens /session /mcp /skill",
+        ]
+        has_output = any(line.strip() for line in self.output_lines)
+        fixed_rows = len(header_lines) + 4  # top sep + middle title + bottom sep + activity line
+        content_rows = max(8, total_rows - fixed_rows - 1)  # keep one row for prompt
+
+        if has_output:
+            # Shared middle area: Dialogue + split line + Output
+            output_rows = min(6, max(3, content_rows // 3))
+            dialogue_rows = max(4, content_rows - output_rows - 1)
+        else:
+            output_rows = 0
+            dialogue_rows = content_rows
+
+        dialogue_block = self._render_dialogue_lines(width, dialogue_rows)
+        output_block: list[str] = []
+        if has_output:
+            output_block.append("[Output]")
+            remaining = max(0, output_rows - 1)
+            head = self.output_lines[:remaining]
+            if len(head) < remaining:
+                head = head + ([""] * (remaining - len(head)))
+            output_block.extend(head)
+
+        print("\033[2J\033[H", end="")
+        for row in header_lines:
+            print(row[:width])
+        print(sep)
+        print(
+            f"Dialogue: page {self.dialogue_page + 1}/{self._last_dialogue_page_total} "
+            "(Alt+K prev, Alt+J next, Alt+0 end)",
+        )
+        for line in dialogue_block:
+            print(line[:width])
+        if has_output:
+            print("." * width)
+            for line in output_block:
+                print(line[:width])
+        print(sep)
+        print(self.activity_status[:width])
+        print(sep)
+
+    async def read_line(self, prompt: str) -> str:
+        if self.enabled:
+            self.render()
+        return await _read_line(prompt)
 
 
 def _auto_title(messages: List[Message]) -> str:
@@ -43,12 +237,12 @@ def _auto_title(messages: List[Message]) -> str:
     return first[:40] + ("..." if len(first) > 40 else "")
 
 
-def _print_session_brief(record: SessionRecord) -> None:
+def _session_brief_line(record: SessionRecord) -> str:
     title = (record.title or "Untitled Session").replace("\n", " ").strip()
     title_short = title[:60] + ("..." if len(title) > 60 else "")
-    print(
+    return (
         f"{record.session_id} | updated={record.updated_at} | "
-        f"msgs={len(record.messages)} | {record.file_path.name} | title={title_short}",
+        f"msgs={len(record.messages)} | {record.file_path.name} | title={title_short}"
     )
 
 
@@ -81,29 +275,57 @@ def _message_content_to_text(content: object) -> str:
     return json.dumps(content, ensure_ascii=False)
 
 
-def _print_raw_messages(messages: List[Message], *, limit: int) -> None:
+def _raw_messages_lines(messages: List[Message], *, limit: int) -> list[str]:
     if limit <= 0 or not messages:
-        return
+        return []
     tail = messages[-limit:]
-    print("")
-    print(f"Restored raw messages (last {len(tail)}):")
+    lines: list[str] = ["", f"Restored raw messages (last {len(tail)}):"]
     for idx, msg in enumerate(tail, start=1):
         role = str(msg.get("role", "unknown"))
         text = _message_content_to_text(msg.get("content", ""))
-        print(f"[{idx}] {role}:")
-        print(text)
-        print("")
+        lines.append(f"[{idx}] {role}:")
+        lines.append(text)
+        lines.append("")
+    return lines
+
+
+def _restored_preview_lines(messages: List[Message], *, max_pairs: int = 4) -> list[str]:
+    if not messages:
+        return ["(empty session)"]
+    lines: list[str] = ["Recent dialogue preview:"]
+    user_items = [m for m in messages if str(m.get("role")) == "user"]
+    if not user_items:
+        return lines + ["(no user messages)"]
+    tail_users = user_items[-max_pairs:]
+    for idx, user_msg in enumerate(tail_users, start=1):
+        user_text = " ".join(str(user_msg.get("content", "")).split())
+        lines.append(f"[U{idx}] {user_text[:140]}{'...' if len(user_text) > 140 else ''}")
+        assistant_text = "-"
+        try:
+            pos = messages.index(user_msg)
+        except ValueError:
+            pos = -1
+        if pos >= 0:
+            for follow in messages[pos + 1 :]:
+                if str(follow.get("role")) == "assistant":
+                    assistant_text = " ".join(str(follow.get("content", "")).split())
+                    break
+                if str(follow.get("role")) == "user":
+                    break
+        lines.append(
+            f"[A{idx}] {assistant_text[:140]}{'...' if len(assistant_text) > 140 else ''}",
+        )
+    return lines
 
 
 def _token_snapshot(loop: V5SkillToolsLoop) -> dict[str, int | bool]:
     return loop.get_token_usage_snapshot()
 
 
-def _print_token_stats(loop: V5SkillToolsLoop, *, turn_delta: dict[str, int] | None = None) -> None:
+def _token_stats_line(loop: V5SkillToolsLoop, *, turn_delta: dict[str, int] | None = None) -> str:
     snap = _token_snapshot(loop)
     if not bool(snap.get("has_usage")):
-        print("[TOKENS] no LLM call yet")
-        return
+        return "[TOKENS] no LLM call yet"
     window_prompt = int(snap.get("last_prompt_tokens", 0))
     window_completion = int(snap.get("last_completion_tokens", 0))
     window_total = int(snap.get("last_total_tokens", 0))
@@ -123,11 +345,25 @@ def _print_token_stats(loop: V5SkillToolsLoop, *, turn_delta: dict[str, int] | N
             " | "
             f"turn(prompt={turn_delta['prompt']}, completion={turn_delta['completion']}, total={turn_delta['total']})"
         )
-    print(line)
+    return line
+
+
+def _activity_status_line(loop: V5SkillToolsLoop) -> str:
+    snap = _token_snapshot(loop)
+    return (
+        "Activity: "
+        f"window(p={int(snap.get('last_prompt_tokens', 0))} "
+        f"c={int(snap.get('last_completion_tokens', 0))} "
+        f"t={int(snap.get('last_total_tokens', 0))}) | "
+        f"session(p={int(snap.get('session_prompt_tokens', 0))} "
+        f"c={int(snap.get('session_completion_tokens', 0))} "
+        f"t={int(snap.get('session_total_tokens', 0))}) | "
+        f"source={str(snap.get('last_usage_source', 'none'))}"
+    )
 
 
 def _top_level_commands() -> list[str]:
-    return ["/quit", "/state", "/tokens", "/session", "/mcp", "/skill"]
+    return ["/quit", "/state", "/tokens", "/page", "/j", "/k", "/0", "/session", "/mcp", "/skill"]
 
 
 def _session_subcommands() -> list[str]:
@@ -168,6 +404,12 @@ def _build_completions(
             return [sid for sid in session_ids if sid.startswith(text)]
         if len(tokens) == 2:
             return [sub for sub in _session_subcommands() if sub.startswith(text)]
+        return []
+
+    if head == "/page":
+        page_sub = ["up", "down", "end"]
+        if len(tokens) <= 2:
+            return [sub for sub in page_sub if sub.startswith(text)]
         return []
 
     if head == "/mcp":
@@ -272,6 +514,12 @@ async def async_main() -> int:
     )
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--log-dir", default="./logs")
+    parser.add_argument(
+        "--ui-refresh",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable fixed-area terminal refresh UI (default: off)",
+    )
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -286,6 +534,11 @@ async def async_main() -> int:
         logger=logger,
     )
     mcp_manager = MCPManagerV4(cfg.mcp_servers or []) if cfg.mcp_servers else None
+    ui = RefreshUI(enabled=bool(args.ui_refresh), model_name=cfg.model_name, log_path=log_path)
+
+    def _trace_to_ui(line: str) -> None:
+        if ui.enabled:
+            ui.add_dialogue("TOOL", line)
 
     loop = V5SkillToolsLoop(
         client=client,
@@ -297,6 +550,8 @@ async def async_main() -> int:
         mcp_enabled=bool(cfg.mcp_servers),
         skills_dir=cfg.skills_dir,
         stream_text=bool(args.stream),
+        verbose=not bool(args.ui_refresh),
+        trace_callback=_trace_to_ui if bool(args.ui_refresh) else None,
     )
 
     store = SessionStoreV6(args.sessions_dir)
@@ -312,26 +567,69 @@ async def async_main() -> int:
         max_items=max(0, int(args.rehydrate_history)),
     )
 
-    print(f"agent-loop suite started | loop=v6 | model={cfg.model_name}")
-    print(f"log file: {log_path}")
-    print(f"session: {record.session_id} ({record.file_path})")
-    print("Commands: /quit, /state, /tokens")
-    print("Session Commands: /session list|new|use <id>")
-    print("MCP Commands: /mcp list|on|off|refresh")
-    print("Skill Commands: /skill list|use <name>|off")
+    prompt_session = _build_prompt_session(ui) if ui.enabled else None
+    ui.set_session(record.session_id, str(record.file_path))
+
+    def _refresh_activity_status() -> None:
+        ui.set_activity_status(_activity_status_line(loop))
+
+    _refresh_activity_status()
+    if ui.enabled and prompt_session is None:
+        ui.set_activity_status(f"{ui.activity_status} | prompt_toolkit missing")
+    if not ui.enabled:
+        ui.add(f"agent-loop suite started | loop=v6 | model={cfg.model_name}")
+        ui.add("Session Commands: /session list|new|use <id>")
+        ui.add("MCP Commands: /mcp list|on|off|refresh")
+        ui.add("Skill Commands: /skill list|use <name>|off")
 
     try:
         while True:
-            user_input = (await _read_line("> ")).strip()
+            try:
+                if prompt_session is not None:
+                    if ui.enabled:
+                        ui.render()
+                    user_input = (await prompt_session.prompt_async("> ")).strip()
+                else:
+                    user_input = (await ui.read_line("> ")).strip()
+            except KeyboardInterrupt:
+                ui.add("Interrupted (^C). Exiting...")
+                return 130
+            except EOFError:
+                return 0
             if not user_input:
+                continue
+            if user_input == "/k":
+                ui.page_up()
+                continue
+            if user_input == "/j":
+                ui.page_down()
+                continue
+            if user_input == "/0":
+                ui.page_end()
                 continue
             if user_input == "/quit":
                 return 0
             if user_input == "/state":
-                print(json.dumps(loop.get_messages(), ensure_ascii=False, indent=2))
+                ui.add(json.dumps(loop.get_messages(), ensure_ascii=False, indent=2))
                 continue
             if user_input == "/tokens":
-                _print_token_stats(loop)
+                token_line = _token_stats_line(loop)
+                ui.set_token_line(token_line)
+                ui.add(token_line)
+                _refresh_activity_status()
+                continue
+            if user_input.startswith("/page"):
+                action = user_input[5:].strip()
+                if action == "up":
+                    ui.page_up()
+                    continue
+                if action == "down":
+                    ui.page_down()
+                    continue
+                if action == "end":
+                    ui.page_end()
+                    continue
+                ui.add("Usage: /page up|down|end (快捷: /k /j /0)")
                 continue
 
             if user_input.startswith("/session "):
@@ -340,97 +638,135 @@ async def async_main() -> int:
                     _persist_if_needed(store, record, loop.state.messages)
                     records = [item for item in store.list_sessions() if _has_user_messages(item.messages)]
                     if not records:
-                        print("(no sessions)")
-                    for item in records:
-                        _print_session_brief(item)
+                        ui.add("(no sessions)")
+                    else:
+                        ui.add("\n".join(_session_brief_line(item) for item in records))
                     continue
                 if action == "new":
                     _persist_if_needed(store, record, loop.state.messages)
                     record = store.create(model_name=cfg.model_name, loop_version="v6", persist=False)
                     loop.state.messages = []
-                    print(f"Switched to new session: {record.session_id}")
+                    ui.set_session(record.session_id, str(record.file_path))
+                    _refresh_activity_status()
+                    ui.add(f"Switched to new session: {record.session_id}")
                     continue
                 if action.startswith("use "):
                     sid = action.split(" ", 1)[1].strip()
                     if not sid:
-                        print("Usage: /session use <id>")
+                        ui.add("Usage: /session use <id>")
                         continue
                     _persist_if_needed(store, record, loop.state.messages)
                     record = store.load(sid)
                     loop.state.messages = list(record.messages)
+                    ui.set_session(record.session_id, str(record.file_path))
+                    _refresh_activity_status()
+                    if ui.enabled:
+                        ui.hydrate_dialogue_from_messages(loop.state.messages, max_messages=16)
                     rehydrated = _rehydrate_readline_history_from_messages(
                         loop.state.messages,
                         max_items=max(0, int(args.rehydrate_history)),
                     )
-                    print(
+                    ui.add(
                         f"Restored session: {record.session_id} | "
                         f"loaded_messages={len(record.messages)} | "
-                        f"rehydrated_history={rehydrated}",
+                        f"rehydrated_history={rehydrated}"
                     )
-                    print(f"last_user: {_latest_by_role(loop.state.messages, 'user')}")
-                    print(f"last_assistant: {_latest_by_role(loop.state.messages, 'assistant')}")
-                    _print_raw_messages(
+                    ui.add(f"last_user: {_latest_by_role(loop.state.messages, 'user')}")
+                    ui.add(f"last_assistant: {_latest_by_role(loop.state.messages, 'assistant')}")
+                    for line in _restored_preview_lines(loop.state.messages, max_pairs=4):
+                        ui.add(line)
+                    for line in _raw_messages_lines(
                         loop.state.messages,
                         limit=max(0, int(args.show_restored_messages)),
-                    )
+                    ):
+                        ui.add(line)
                     continue
-                print("Usage: /session list|new|use <id>")
+                ui.add("Usage: /session list|new|use <id>")
                 continue
 
             if user_input.startswith("/mcp "):
                 action = user_input.split(" ", 1)[1].strip()
                 if action == "list":
                     names = loop.list_mcp_tools()
-                    print("\n".join(names) if names else "(no mcp tools)")
+                    ui.add("\n".join(names) if names else "(no mcp tools)")
                     continue
                 if action == "on":
                     await loop.set_mcp_enabled(True)
-                    print("MCP enabled")
+                    ui.add("MCP enabled")
                     continue
                 if action == "off":
                     await loop.set_mcp_enabled(False)
-                    print("MCP disabled")
+                    ui.add("MCP disabled")
                     continue
                 if action == "refresh":
                     await loop.refresh_mcp_tools()
-                    print("MCP tools refreshed")
+                    ui.add("MCP tools refreshed")
                     continue
-                print("Usage: /mcp list|on|off|refresh")
+                ui.add("Usage: /mcp list|on|off|refresh")
                 continue
 
             if user_input.startswith("/skill "):
                 action = user_input.split(" ", 1)[1].strip()
                 if action == "list":
                     names = loop.list_skills()
-                    print("\n".join(names) if names else "(no skills)")
+                    ui.add("\n".join(names) if names else "(no skills)")
                     continue
                 if action.startswith("use "):
                     name = action.split(" ", 1)[1].strip()
                     if not name:
-                        print("Usage: /skill use <name>")
+                        ui.add("Usage: /skill use <name>")
                         continue
                     if loop.use_skill(name):
-                        print(f"Skill enabled: {name}")
+                        ui.add(f"Skill enabled: {name}")
                     else:
-                        print(f"Skill not found: {name}")
+                        ui.add(f"Skill not found: {name}")
                     continue
                 if action == "off":
                     loop.disable_skill()
-                    print("Skill disabled")
+                    ui.add("Skill disabled")
                     continue
-                print("Usage: /skill list|use <name>|off")
+                ui.add("Usage: /skill list|use <name>|off")
                 continue
 
+            if user_input.startswith("/"):
+                ui.add(
+                    "Unknown command. Built-in commands: "
+                    "/quit, /state, /tokens, /session list|new|use <id>, "
+                    "/mcp list|on|off|refresh, /skill list|use <name>|off",
+                )
+                continue
+
+            ui.add_dialogue("USER", user_input)
             before = _token_snapshot(loop)
-            text = await loop.run_turn(user_input)
-            print(text)
+            try:
+                text = await loop.run_turn(user_input)
+            except KeyboardInterrupt:
+                ui.add("Interrupted (^C). Exiting...")
+                return 130
+            if text:
+                ui.add_dialogue("ASSISTANT", text)
             after = _token_snapshot(loop)
             turn_delta = {
                 "prompt": int(after.get("session_prompt_tokens", 0)) - int(before.get("session_prompt_tokens", 0)),
                 "completion": int(after.get("session_completion_tokens", 0)) - int(before.get("session_completion_tokens", 0)),
                 "total": int(after.get("session_total_tokens", 0)) - int(before.get("session_total_tokens", 0)),
             }
-            _print_token_stats(loop, turn_delta=turn_delta)
+            token_line = _token_stats_line(loop, turn_delta=turn_delta)
+            ui.set_token_line(token_line)
+            _refresh_activity_status()
+            token_suffix = (
+                f"(usage: in={int(after.get('last_prompt_tokens', 0))}, "
+                f"out={int(after.get('last_completion_tokens', 0))}, "
+                f"total={int(after.get('last_total_tokens', 0))}; "
+                f"latency={int(after.get('last_latency_ms', 0))}ms)"
+            )
+            if ui.dialogue and ui.dialogue[-1][0] == "ASSISTANT":
+                role, content = ui.dialogue[-1]
+                ui.dialogue[-1] = (role, f"{content}\n{token_suffix}")
+                if ui.enabled:
+                    ui.render()
+            else:
+                ui.add_dialogue("ASSISTANT", token_suffix)
             _persist_if_needed(store, record, loop.state.messages)
     finally:
         # v4 MCP manager has no long-lived connections to close.
@@ -438,7 +774,11 @@ async def async_main() -> int:
 
 
 def main() -> int:
-    return asyncio.run(async_main())
+    try:
+        return asyncio.run(async_main())
+    except KeyboardInterrupt:
+        print("\nInterrupted. Bye.")
+        return 130
 
 
 if __name__ == "__main__":

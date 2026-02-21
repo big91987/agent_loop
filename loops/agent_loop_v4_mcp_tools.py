@@ -24,10 +24,9 @@ class V4MCPToolsLoop(V3ToolsLoop):
         self.mcp_enabled = mcp_enabled and mcp_manager is not None
         self._mcp_tools: List[ToolSpec] = []
 
-    @staticmethod
-    def _print_mcp_call(tool_name: str, params: Dict[str, object]) -> None:
+    def _print_mcp_call(self, tool_name: str, params: Dict[str, object]) -> None:
         args = json.dumps(params, ensure_ascii=False, sort_keys=True)
-        print(f"[MCP CALL] {tool_name} args={args}")
+        self._emit_trace(f"[MCP CALL] {tool_name} args={args}")
 
     async def _rebuild_tools(self, *, refresh_mcp: bool) -> None:
         mcp_tools: List[ToolSpec] = []

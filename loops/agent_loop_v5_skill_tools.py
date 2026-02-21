@@ -37,9 +37,8 @@ class V5SkillToolsLoop(V4MCPToolsLoop):
     def disable_skill(self) -> None:
         self.active_skill_name = None
 
-    @staticmethod
-    def _print_skill_call(skill_name: str) -> None:
-        print(f"[SKILL CALL] read_skill name={skill_name}")
+    def _print_skill_call(self, skill_name: str) -> None:
+        self._emit_trace(f"[SKILL CALL] read_skill name={skill_name}")
 
     def _build_read_skill_tool(self) -> ToolSpec:
         async def _handler(params: Dict[str, object]) -> str:

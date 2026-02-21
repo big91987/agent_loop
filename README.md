@@ -48,6 +48,7 @@ python3 cli.py --config ./configs/v4_mcp_simple.json --loop v4
 python3 cli.py --config ./configs/v4_1_mcp_simple.json --loop v4.1
 python3 cli.py --config ./configs/v5_skill_pi_style.json --loop v5
 python3 cli_v6.py --config ./configs/v6_session.json
+python3 cli_v6.py --config ./configs/v6_session.json --ui-refresh
 ```
 
 交互命令：
@@ -56,6 +57,7 @@ python3 cli_v6.py --config ./configs/v6_session.json
 - `/quit`
 - `/mcp list|on|off|refresh`（仅 v4/v4.1/v5）
 - `/skill list|use <name>|off`（仅 v5）
+- 任何以 `/` 开头的输入都按内置命令处理；未知命令不会发送给模型（v6）
 
 ## 日志
 
@@ -276,13 +278,21 @@ v4 示例 server（stdio）：
 - 流式输出：
   - 默认开启 `--stream`（可用 `--no-stream` 关闭）
   - 模型文本会边到达边打印（工具调用轮保持原有执行逻辑）
+- 固定区域刷新 UI：
+  - 使用 `--ui-refresh` 开启
+  - 基于 ANSI 全屏重绘：顶部元信息 + 中间对话主面板 + 底部 activity 单行状态
+  - `Dialogue` 仅展示 `USER/ASSISTANT/TOOL`（包含 tool call / tool result / mcp call / skill call）
+  - `Output` 仅在有命令输出时出现（例如 `/session list`），并占用中间主面板的一部分高度
+  - 适合教学演示；如终端不兼容可关闭该参数回到普通模式
+  - 翻页：`Alt+K` 上一页，`Alt+J` 下一页，`Alt+0` 回到最新页（同时支持 `/page up|down|end`）
+  - `Ctrl+C`：优雅退出，不打印 traceback
 - 支持查看与管理：
   - `/session list`：列出本地 sessions
   - `/session new`：新建并切换到新 session
   - `/session use <id>`：恢复指定 session
   - `/tokens`：查看当前激活窗口最近一次调用的 token，以及当前 session 累计 token
 - token 统计：
-  - 每轮结束自动打印 `window/session/turn` 三组 token 计数
+  - assistant 回复后追加本次调用 usage（`in/out/total/latency`）
   - 优先使用模型返回的 `usage`；若供应商未返回，自动切换到本地估算（输出 `source=estimated`）
 - 存储目录：默认 `./sessions`（可用 `--sessions-dir` 覆盖）
 - 文件格式：每个 session 一份 markdown，内含

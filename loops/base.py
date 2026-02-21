@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 import json
 import math
+import time
 from typing import Callable, List, Optional
 
 from core.types import AssistantResponse, LLMClient, Message, TokenUsage, ToolSpec
@@ -35,6 +36,7 @@ class BaseAgentLoop(ABC):
         self._session_prompt_tokens = 0
         self._session_completion_tokens = 0
         self._session_total_tokens = 0
+        self._last_latency_ms = 0
 
     def get_messages(self) -> List[Message]:
         return self.state.messages
@@ -49,6 +51,7 @@ class BaseAgentLoop(ABC):
             "session_prompt_tokens": self._session_prompt_tokens,
             "session_completion_tokens": self._session_completion_tokens,
             "session_total_tokens": self._session_total_tokens,
+            "last_latency_ms": self._last_latency_ms,
         }
 
     @staticmethod
@@ -67,6 +70,7 @@ class BaseAgentLoop(ABC):
             {"role": "system", "content": self.state.system_prompt},
             *self.state.messages,
         ]
+        started = time.perf_counter()
         response = await self.client.generate(
             model_name=self.model_name,
             messages=llm_messages,
@@ -75,6 +79,7 @@ class BaseAgentLoop(ABC):
             stream=self.stream_text,
             on_text_delta=on_text_delta,
         )
+        self._last_latency_ms = int((time.perf_counter() - started) * 1000)
         usage = response.usage
         if usage is None:
             est_prompt = self._estimate_tokens_from_obj(llm_messages)
