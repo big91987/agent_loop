@@ -1,12 +1,13 @@
 # Python Agent Loop Teaching Suite
 
-教学目标：用最小代码从 `v1`（纯对话）走到 `v2`（教学用基础工具）、`v3`（本地 CLI 工具），再到 `v4`（MCP）、`v4.1`（MCP + resources + 多传输）和 `v5`（Skill）。
+教学目标：用最小代码从 `v1`（纯对话）走到 `v2`（教学用基础工具）、`v3`（本地 CLI 工具），再到 `v4`（MCP）、`v4.1`（MCP + resources + 多传输）、`v5`（Skill）和 `v6`（Session 基础设施）。
 
 ## 目录
 
 - `configs/`: 配置文件目录（可放多份 profile）
 - `config.json`: 兼容保留（建议使用 `configs/default.json`）
-- `cli.py`: 教学 CLI 入口
+- `cli.py`: 教学 CLI 入口（v1-v5）
+- `cli_v6.py`: v6 CLI 入口（session-first）
 - `core/`: 配置、客户端抽象、工具定义
 - `tools/`: 工具定义（每个 tool 一个文件）
 - `backups_sync_v1v2/`: 重构前同步版备份
@@ -18,7 +19,7 @@
 
 ## 配置
 
-推荐使用 `configs/default.json`、`configs/v4_mcp_simple.json`、`configs/v4_1_mcp_simple.json` 或 `configs/v5_skill_pi_style.json`。
+推荐使用 `configs/default.json`、`configs/v4_mcp_simple.json`、`configs/v4_1_mcp_simple.json`、`configs/v5_skill_pi_style.json` 或 `configs/v6_session.json`。
 
 配置字段：
 - `provider`: 供应商标识（教学版仅做信息保留）
@@ -46,6 +47,7 @@ python3 cli.py --config ./configs/default.json --loop v3 --debug --log-dir ./log
 python3 cli.py --config ./configs/v4_mcp_simple.json --loop v4
 python3 cli.py --config ./configs/v4_1_mcp_simple.json --loop v4.1
 python3 cli.py --config ./configs/v5_skill_pi_style.json --loop v5
+python3 cli_v6.py --config ./configs/v6_session.json
 ```
 
 交互命令：
@@ -258,6 +260,37 @@ v4 示例 server（stdio）：
 当前项目选择：**pi-mono 风格**。  
 原因：教学上更直观，能清楚展示“元信息常驻 + 正文按需读取”的渐进式披露链路。
 
+### v6（Session 基础设施）
+- 新 CLI 入口：`cli_v6.py`
+- 默认行为：启动即新建一个内存 session（仅当有真实用户对话后才落盘）
+- 支持恢复：`--session <id>` 或交互命令 `/session use <id>`
+- 恢复后会把该 session 的最近用户输入回填到 readline 历史（上下键可回放，默认 100 条，可用 --rehydrate-history 覆盖）
+- 会话标题（title）：
+  - 自动从首个有效用户请求生成短标题
+  - `/session list` 主要展示 title，便于快速识别会话
+- 交互体验（readline）：
+  - 上下箭头：历史命令浏览
+  - 退格编辑：终端行编辑能力
+  - TAB 补全：支持 `/session`、`/mcp`、`/skill` 命令及部分参数补全
+  - 历史文件：`--history-file`（默认 `./logs/cli_v6_history.txt`）
+- 流式输出：
+  - 默认开启 `--stream`（可用 `--no-stream` 关闭）
+  - 模型文本会边到达边打印（工具调用轮保持原有执行逻辑）
+- 支持查看与管理：
+  - `/session list`：列出本地 sessions
+  - `/session new`：新建并切换到新 session
+  - `/session use <id>`：恢复指定 session
+  - `/tokens`：查看当前激活窗口最近一次调用的 token，以及当前 session 累计 token
+- token 统计：
+  - 每轮结束自动打印 `window/session/turn` 三组 token 计数
+  - 优先使用模型返回的 `usage`；若供应商未返回，自动切换到本地估算（输出 `source=estimated`）
+- 存储目录：默认 `./sessions`（可用 `--sessions-dir` 覆盖）
+- 文件格式：每个 session 一份 markdown，内含
+  - 元数据（创建时间/更新时间/模型/loop）
+  - title
+  - 可恢复的 JSON messages
+  - 可读 transcript
+
 ## TODO（基于 PRD 的实现计划）
 
 | 阶段 | 目标 | 关键内容 | 状态 |
@@ -275,3 +308,5 @@ v4 示例 server（stdio）：
 - MCP 原理与实现说明：`docs/mcp_principles.md`
 - Skill 原理与实现说明：`docs/skill_principles.md`
 - DeepAgents 中间件机制说明：`docs/deepagents_principles.md`
+- Memory 注入与 loop 时机对比（CC / OpenCode / OpenClaw）：`docs/memory_architecture_compare.md`
+- Memory 大白话综述 + 系统扫描 + Benchmark/SOTA：`docs/memory_research_overview.md`

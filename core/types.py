@@ -19,6 +19,15 @@ class ToolCall:
 class AssistantResponse:
     text: str
     tool_calls: List[ToolCall] = field(default_factory=list)
+    usage: "TokenUsage | None" = None
+
+
+@dataclass(frozen=True)
+class TokenUsage:
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    source: str = "provider"
 
 
 ToolHandlerResult = Union[str, Awaitable[str]]
@@ -41,4 +50,6 @@ class LLMClient(Protocol):
         messages: List[Message],
         tools: Optional[List[ToolSpec]] = None,
         timeout_seconds: int = 60,
+        stream: bool = False,
+        on_text_delta: Callable[[str], None] | None = None,
     ) -> AssistantResponse: ...
