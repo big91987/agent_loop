@@ -20,6 +20,13 @@ class AppConfig:
     default_loop_version: str = "v1"
     mcp_servers: List[MCPServerConfig] | None = None
     skills_dir: str | None = None
+    memory_compact_ratio: float = 0.8
+    memory_context_window_tokens: int = 128000
+    pricing_currency: str = "CNY"
+    pricing_input_per_million: float | None = None
+    pricing_output_per_million: float | None = None
+    pricing_cache_read_per_million: float | None = None
+    pricing_cache_write_per_million: float | None = None
 
 
 _ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -119,6 +126,40 @@ def load_config(path: str) -> AppConfig:
     if skills_dir == "":
         skills_dir = None
 
+    ratio_raw = raw.get("memory_compact_ratio", 0.8)
+    try:
+        memory_compact_ratio = float(ratio_raw)
+    except (TypeError, ValueError):
+        memory_compact_ratio = 0.8
+    if memory_compact_ratio <= 0:
+        memory_compact_ratio = 0.8
+    if memory_compact_ratio > 1:
+        memory_compact_ratio = 1.0
+
+    context_window_raw = raw.get("memory_context_window_tokens", 128000)
+    try:
+        memory_context_window_tokens = int(context_window_raw)
+    except (TypeError, ValueError):
+        memory_context_window_tokens = 128000
+    memory_context_window_tokens = max(1000, memory_context_window_tokens)
+
+    def _to_float_or_none(value: object) -> float | None:
+        if value is None:
+            return None
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return None
+        if parsed < 0:
+            return None
+        return parsed
+
+    pricing_currency_raw = str(raw.get("pricing_currency", "CNY")).strip().upper() or "CNY"
+    pricing_input_per_million = _to_float_or_none(raw.get("pricing_input_per_million"))
+    pricing_output_per_million = _to_float_or_none(raw.get("pricing_output_per_million"))
+    pricing_cache_read_per_million = _to_float_or_none(raw.get("pricing_cache_read_per_million"))
+    pricing_cache_write_per_million = _to_float_or_none(raw.get("pricing_cache_write_per_million"))
+
     return AppConfig(
         provider=str(raw["provider"]),
         model_name=str(raw["model_name"]),
@@ -129,4 +170,11 @@ def load_config(path: str) -> AppConfig:
         default_loop_version=str(raw.get("default_loop_version", "v1")),
         mcp_servers=mcp_servers,
         skills_dir=skills_dir,
+        memory_compact_ratio=memory_compact_ratio,
+        memory_context_window_tokens=memory_context_window_tokens,
+        pricing_currency=pricing_currency_raw,
+        pricing_input_per_million=pricing_input_per_million,
+        pricing_output_per_million=pricing_output_per_million,
+        pricing_cache_read_per_million=pricing_cache_read_per_million,
+        pricing_cache_write_per_million=pricing_cache_write_per_million,
     )

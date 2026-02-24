@@ -18,6 +18,8 @@ class V3ToolsLoop(BaseAgentLoop):
         default_tool_cwd: str | None = None,
         verbose: bool = True,
         trace_callback: Callable[[str], None] | None = None,
+        status_callback: Callable[[str], None] | None = None,
+        model_delta_callback: Callable[[str], None] | None = None,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
@@ -28,6 +30,8 @@ class V3ToolsLoop(BaseAgentLoop):
         self.default_tool_cwd = default_tool_cwd
         self.verbose = verbose
         self.trace_callback = trace_callback
+        self.status_callback = status_callback
+        self.model_delta_callback = model_delta_callback
         self._tool_registry: Dict[str, ToolSpec] = build_tool_registry(self.tools)
 
     @staticmethod
@@ -36,6 +40,16 @@ class V3ToolsLoop(BaseAgentLoop):
         if len(one_line) <= limit:
             return one_line
         return f"{one_line[:limit]}..."
+
+    def _emit_trace(self, line: str) -> None:
+        if self.verbose:
+            print(line)
+        if self.trace_callback is not None:
+            self.trace_callback(line)
+
+    def _emit_status(self, status: str) -> None:
+        if self.status_callback is not None:
+            self.status_callback(status)
 
     def _print_tool_call(self, name: str, args: Dict[str, object]) -> None:
         args_text = json.dumps(args, ensure_ascii=False, sort_keys=True)
@@ -49,6 +63,7 @@ class V3ToolsLoop(BaseAgentLoop):
         self.state.messages.append({"role": "user", "content": user_input})
         final_text = ""
         hit_round_limit = True
+        self._emit_status("模型回复中")
 
         for round_index in range(self.max_tool_rounds):
             if self.verbose:
@@ -61,6 +76,8 @@ class V3ToolsLoop(BaseAgentLoop):
                 streamed = True
                 if self.verbose:
                     print(delta, end="", flush=True)
+                if self.model_delta_callback is not None:
+                    self.model_delta_callback(delta)
 
             response = await self._call_llm(tools=self.tools, on_text_delta=_on_text_delta)
             if self.verbose:
@@ -90,6 +107,7 @@ class V3ToolsLoop(BaseAgentLoop):
                 break
 
             for call in response.tool_calls:
+                self._emit_status(f"工具调用中: {call.name}")
                 tool = self._tool_registry.get(call.name)
                 if not tool:
                     tool_output = f"Tool not found: {call.name}"
@@ -118,6 +136,7 @@ class V3ToolsLoop(BaseAgentLoop):
                         "content": tool_output,
                     },
                 )
+                self._emit_status("模型回复中")
 
         if hit_round_limit and not final_text:
             final_text = (
@@ -127,9 +146,9 @@ class V3ToolsLoop(BaseAgentLoop):
             )
             self.state.messages.append({"role": "assistant", "content": final_text})
 
+        self._emit_status("等待输入")
         return final_text
-    def _emit_trace(self, line: str) -> None:
-        if self.verbose:
-            print(line)
-        if self.trace_callback is not None:
-            self.trace_callback(line)
+
+
+class V3(V3ToolsLoop):
+    pass

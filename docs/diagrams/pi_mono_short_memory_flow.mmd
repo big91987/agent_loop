@@ -1,0 +1,22 @@
+flowchart TD
+    A["User/Tool events arrive"] --> B["AgentSession handles message_end"]
+    B --> C["SessionManager.appendMessage/customMessage"]
+    C --> D["Append-only JSONL entries (id/parentId tree)"]
+
+    D --> E{"Compaction needed?"}
+    E -- "No" --> F["Continue normal turns"]
+    E -- "Yes (threshold/overflow/manual)" --> G["prepareCompaction(pathEntries, settings)"]
+
+    G --> H["Choose cut-point (avoid toolResult boundary, keep recent tokens)"]
+    H --> I["Generate summary (default or extension hook)"]
+    I --> J["appendCompaction(summary, firstKeptEntryId, tokensBefore)"]
+    J --> K["buildSessionContext()"]
+    K --> L["agent.replaceMessages(rebuilt working context)"]
+
+    L --> M{"Overflow path?"}
+    M -- "Yes" --> N["auto retry: agent.continue()"]
+    M -- "No" --> O["Wait next user turn"]
+
+    D --> P["Process restart / resume"]
+    P --> Q["Load JSONL session entries"]
+    Q --> K

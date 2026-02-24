@@ -1,6 +1,6 @@
 {
   "provider": "minimaxi",
-  "model_name": "MiniMax-M2.1",
+  "model_name": "MiniMax-M2.5",
   "base_url": "https://api.minimaxi.com/v1",
   "api_key": null,
   "api_key_env": "MINIMAX_API_KEY",

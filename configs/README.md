@@ -6,6 +6,16 @@
 - `v4_1_mcp_playwright.json`: Playwright MCP profile for browser automation in `v4.1`.
 - `v4_1_mcp_amap_node.json`: AMap MCP profile using Node.js I/O (`npx` + stdio) for `v4.1`.
 - `v5_skill_pi_style.json`: v5 profile using pi-mono style skill progressive disclosure with `~/.claude/skills`.
+- `v6_1_short_memory.json`: v6.1 profile for session + short-memory compaction.
+  - `memory_compact_ratio`: compact trigger ratio (e.g. `0.8`)
+  - `memory_context_window_tokens`: model context window size used to derive threshold
+  - effective threshold: `memory_context_window_tokens * memory_compact_ratio`
+  - billing (optional):
+    - `pricing_currency`: display currency code (`CNY`/`USD`)
+    - `pricing_input_per_million`: input token unit price (per 1,000,000 tokens)
+    - `pricing_output_per_million`: output token unit price (per 1,000,000 tokens)
+    - `pricing_cache_read_per_million`: cache-read token unit price (reserved field)
+    - `pricing_cache_write_per_million`: cache-write token unit price (reserved field)
 
 `mcpServers.<name>.type` supported values:
 - `stdio`: use `command` + `args` + `env`
@@ -26,4 +36,5 @@ python3 cli.py --config ./configs/v4_1_mcp_simple.json --loop v4.1
 python3 cli.py --config ./configs/v4_1_mcp_playwright.json --loop v4.1
 python3 cli.py --config ./configs/v4_1_mcp_amap_node.json --loop v4.1
 python3 cli.py --config ./configs/v5_skill_pi_style.json --loop v5
+python3 cli_v6_1.py --config ./configs/v6_1_short_memory.json
 ```

@@ -46,6 +46,7 @@ class OpenAICompatClient(LLMClient):
         timeout_seconds: int = 60,
         stream: bool = False,
         on_text_delta: Callable[[str], None] | None = None,
+        should_abort: Callable[[], bool] | None = None,
     ) -> AssistantResponse:
         return await asyncio.to_thread(
             self._generate_sync,
@@ -55,6 +56,7 @@ class OpenAICompatClient(LLMClient):
             timeout_seconds=timeout_seconds,
             stream=stream,
             on_text_delta=on_text_delta,
+            should_abort=should_abort,
         )
 
     def _generate_sync(
@@ -66,7 +68,11 @@ class OpenAICompatClient(LLMClient):
         timeout_seconds: int,
         stream: bool,
         on_text_delta: Callable[[str], None] | None,
+        should_abort: Callable[[], bool] | None,
     ) -> AssistantResponse:
+        if should_abort is not None and should_abort():
+            raise InterruptedError("Generation aborted before request")
+
         api_key = self.resolve_api_key()
 
         payload: Dict[str, object] = {
@@ -105,6 +111,8 @@ class OpenAICompatClient(LLMClient):
         )
         with request.urlopen(req, timeout=timeout_seconds) as resp:
             if not stream:
+                if should_abort is not None and should_abort():
+                    raise InterruptedError("Generation aborted")
                 data = json.loads(resp.read().decode("utf-8"))
                 choice = data["choices"][0]["message"]
                 if self.logger:
@@ -139,6 +147,8 @@ class OpenAICompatClient(LLMClient):
             usage: TokenUsage | None = None
 
             for raw_line in resp:
+                if should_abort is not None and should_abort():
+                    raise InterruptedError("Generation aborted")
                 line = raw_line.decode("utf-8", errors="replace").strip()
                 if not line or not line.startswith("data:"):
                     continue

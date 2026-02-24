@@ -1,0 +1,9 @@
+flowchart TD
+    A["New turn"] --> B["Check context pressure"]
+    B --> C{"Need compaction?"}
+    C -- "No" --> Z["Normal run"]
+    C -- "Yes" --> D["Select old history range"]
+    D --> E["Generate one compact summary for old range"]
+    E --> F["Replace old prefix with summary"]
+    F --> G["Keep recent raw turns"]
+    G --> H["Continue original task loop"]

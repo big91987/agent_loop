@@ -65,6 +65,7 @@ class BaseAgentLoop(ABC):
         tools: Optional[List[ToolSpec]] = None,
         *,
         on_text_delta: Callable[[str], None] | None = None,
+        should_abort: Callable[[], bool] | None = None,
     ) -> AssistantResponse:
         llm_messages: List[Message] = [
             {"role": "system", "content": self.state.system_prompt},
@@ -78,6 +79,7 @@ class BaseAgentLoop(ABC):
             timeout_seconds=self.timeout_seconds,
             stream=self.stream_text,
             on_text_delta=on_text_delta,
+            should_abort=should_abort,
         )
         self._last_latency_ms = int((time.perf_counter() - started) * 1000)
         usage = response.usage

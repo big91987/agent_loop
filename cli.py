@@ -10,12 +10,12 @@ from core.config import load_config
 from core.logging_utils import create_session_logger
 from core.mcp_client import MCPManager as MCPManagerV4
 from core.mcp_client_v4_1 import MCPManager as MCPManagerV41
-from loops.agent_loop_v1_basic import V1BasicLoop
-from loops.agent_loop_v2_tools import V2ToolsLoop
-from loops.agent_loop_v3_tools import V3ToolsLoop
-from loops.agent_loop_v4_1_mcp_tools import V4_1MCPToolsLoop
-from loops.agent_loop_v4_mcp_tools import V4MCPToolsLoop
-from loops.agent_loop_v5_skill_tools import V5SkillToolsLoop
+from loops.agent_loop_v1 import V1
+from loops.agent_loop_v2 import V2
+from loops.agent_loop_v3 import V3
+from loops.agent_loop_v4 import V4
+from loops.agent_loop_v4_1 import V4_1
+from loops.agent_loop_v5 import V5
 
 
 async def _read_line(prompt: str) -> str:
@@ -49,19 +49,19 @@ async def async_main() -> int:
     mcp_manager_v41 = MCPManagerV41(cfg.mcp_servers or []) if cfg.mcp_servers else None
 
     loops = {
-        "v1": V1BasicLoop(client=client, model_name=cfg.model_name, timeout_seconds=cfg.timeout_seconds),
-        "v2": V2ToolsLoop(
+        "v1": V1(client=client, model_name=cfg.model_name, timeout_seconds=cfg.timeout_seconds),
+        "v2": V2(
             client=client,
             model_name=cfg.model_name,
             timeout_seconds=cfg.timeout_seconds,
         ),
-        "v3": V3ToolsLoop(
+        "v3": V3(
             client=client,
             model_name=cfg.model_name,
             timeout_seconds=cfg.timeout_seconds,
             default_tool_cwd=".",
         ),
-        "v4": V4MCPToolsLoop(
+        "v4": V4(
             client=client,
             model_name=cfg.model_name,
             timeout_seconds=cfg.timeout_seconds,
@@ -69,7 +69,7 @@ async def async_main() -> int:
             mcp_manager=mcp_manager_v4,
             mcp_enabled=bool(cfg.mcp_servers),
         ),
-        "v4.1": V4_1MCPToolsLoop(
+        "v4.1": V4_1(
             client=client,
             model_name=cfg.model_name,
             timeout_seconds=cfg.timeout_seconds,
@@ -77,7 +77,7 @@ async def async_main() -> int:
             mcp_manager=mcp_manager_v41,
             mcp_enabled=bool(cfg.mcp_servers),
         ),
-        "v5": V5SkillToolsLoop(
+        "v5": V5(
             client=client,
             model_name=cfg.model_name,
             timeout_seconds=cfg.timeout_seconds,
@@ -116,7 +116,11 @@ async def async_main() -> int:
                 continue
             if user_input.startswith("/mcp "):
                 loop = loops.get(loop_version)
-                if not isinstance(loop, V4MCPToolsLoop):
+                if not (
+                    hasattr(loop, "set_mcp_enabled")
+                    and hasattr(loop, "refresh_mcp_tools")
+                    and hasattr(loop, "list_mcp_tools")
+                ):
                     print("/mcp commands are only available in v4/v4.1/v5")
                     continue
                 action = user_input.split(" ", 1)[1].strip()
@@ -143,7 +147,11 @@ async def async_main() -> int:
                 continue
             if user_input.startswith("/skill "):
                 loop = loops.get(loop_version)
-                if not isinstance(loop, V5SkillToolsLoop):
+                if not (
+                    hasattr(loop, "list_skills")
+                    and hasattr(loop, "use_skill")
+                    and hasattr(loop, "disable_skill")
+                ):
                     print("/skill commands are only available in v5")
                     continue
                 action = user_input.split(" ", 1)[1].strip()

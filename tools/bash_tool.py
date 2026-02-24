@@ -4,7 +4,7 @@ from typing import Dict
 
 from core.tool_base import BaseTool
 
-from .local_ops import run_bash
+from .local_ops import run_bash_async
 
 
 class BashTool(BaseTool):
@@ -32,8 +32,8 @@ class BashTool(BaseTool):
             "additionalProperties": False,
         }
 
-    def handler(self, params: Dict[str, object]) -> str:
+    async def handler(self, params: Dict[str, object]) -> str:
         command = str(params["command"])
         cwd = str(params["cwd"]) if params.get("cwd") is not None else None
         timeout = int(params.get("timeout", 30))
-        return run_bash(command=command, cwd=cwd, timeout=timeout)
+        return await run_bash_async(command=command, cwd=cwd, timeout=timeout)

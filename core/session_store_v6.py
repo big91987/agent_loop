@@ -12,8 +12,8 @@ from .types import Message
 
 _SESSION_META_START = "<!-- AGENT_LOOP_V6_META"
 _SESSION_META_END = "-->"
-_MESSAGES_START = "```json session_messages"
-_MESSAGES_END = "```"
+_MESSAGES_START = "<!-- AGENT_LOOP_V6_MESSAGES_START -->"
+_MESSAGES_END = "<!-- AGENT_LOOP_V6_MESSAGES_END -->"
 
 
 def _now_iso() -> str:
@@ -35,6 +35,13 @@ class SessionRecord:
     summary: str
     messages: List[Message]
     file_path: Path
+    session_prompt_tokens: int = 0
+    session_completion_tokens: int = 0
+    session_total_tokens: int = 0
+    last_prompt_tokens: int = 0
+    last_completion_tokens: int = 0
+    last_total_tokens: int = 0
+    last_usage_source: str = "none"
 
 
 class SessionStoreV6:
@@ -56,6 +63,13 @@ class SessionStoreV6:
             summary="",
             messages=[],
             file_path=self.root / f"{session_id}.md",
+            session_prompt_tokens=0,
+            session_completion_tokens=0,
+            session_total_tokens=0,
+            last_prompt_tokens=0,
+            last_completion_tokens=0,
+            last_total_tokens=0,
+            last_usage_source="none",
         )
         if persist:
             self.save(record)
@@ -65,7 +79,15 @@ class SessionStoreV6:
         records: List[SessionRecord] = []
         for path in self.root.glob("*.md"):
             try:
-                records.append(self.load(path.stem))
+                record = self.load(path.stem)
+                if not self._has_meaningful_user_message(record.messages):
+                    # Keep sessions directory clean: empty sessions should not be persisted.
+                    try:
+                        path.unlink()
+                    except OSError:
+                        pass
+                    continue
+                records.append(record)
             except Exception:  # noqa: BLE001
                 continue
         records.sort(key=lambda item: item.updated_at, reverse=True)
@@ -88,9 +110,25 @@ class SessionStoreV6:
             summary=summary,
             messages=messages,
             file_path=path,
+            session_prompt_tokens=int(meta.get("session_prompt_tokens", 0) or 0),
+            session_completion_tokens=int(meta.get("session_completion_tokens", 0) or 0),
+            session_total_tokens=int(meta.get("session_total_tokens", 0) or 0),
+            last_prompt_tokens=int(meta.get("last_prompt_tokens", 0) or 0),
+            last_completion_tokens=int(meta.get("last_completion_tokens", 0) or 0),
+            last_total_tokens=int(meta.get("last_total_tokens", 0) or 0),
+            last_usage_source=str(meta.get("last_usage_source", "none") or "none"),
         )
 
-    def save(self, record: SessionRecord) -> None:
+    def save(self, record: SessionRecord) -> bool:
+        if not self._has_meaningful_user_message(record.messages):
+            # Enforce "no empty session files".
+            try:
+                if record.file_path.exists():
+                    record.file_path.unlink()
+            except OSError:
+                pass
+            return False
+
         record.updated_at = _now_iso()
         meta = {
             "session_id": record.session_id,
@@ -99,6 +137,13 @@ class SessionStoreV6:
             "model_name": record.model_name,
             "loop_version": record.loop_version,
             "title": record.title,
+            "session_prompt_tokens": int(record.session_prompt_tokens),
+            "session_completion_tokens": int(record.session_completion_tokens),
+            "session_total_tokens": int(record.session_total_tokens),
+            "last_prompt_tokens": int(record.last_prompt_tokens),
+            "last_completion_tokens": int(record.last_completion_tokens),
+            "last_total_tokens": int(record.last_total_tokens),
+            "last_usage_source": str(record.last_usage_source),
         }
         readable = self._render_readable(record.messages)
         content = (
@@ -122,6 +167,7 @@ class SessionStoreV6:
             f"{readable}\n"
         )
         record.file_path.write_text(content, encoding="utf-8")
+        return True
 
     @staticmethod
     def _render_readable(messages: List[Message]) -> str:
@@ -166,9 +212,11 @@ class SessionStoreV6:
         start = raw.find(_MESSAGES_START)
         if start < 0:
             return []
-        body_start = raw.find("\n", start)
+        body_start = raw.find("\n", start + len(_MESSAGES_START))
+        if body_start < 0:
+            return []
         end = raw.find(_MESSAGES_END, body_start + 1)
-        if body_start < 0 or end < 0:
+        if end < 0:
             return []
         payload = raw[body_start:end].strip()
         data = json.loads(payload)
@@ -218,3 +266,12 @@ class SessionStoreV6:
         except Exception:  # noqa: BLE001
             pass
         return "Untitled Session"
+
+    @staticmethod
+    def _has_meaningful_user_message(messages: List[Message]) -> bool:
+        for msg in messages:
+            if str(msg.get("role")) != "user":
+                continue
+            if str(msg.get("content", "")).strip():
+                return True
+        return False

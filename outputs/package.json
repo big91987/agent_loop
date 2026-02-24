@@ -1,0 +1,9 @@
+{
+  "name": "election-ppt-generator",
+  "version": "1.0.0",
+  "description": "Generate US Election 2024 themed PPT",
+  "main": "election_ppt.js",
+  "dependencies": {
+    "pptxgenjs": "^3.12.0"
+  }
+}

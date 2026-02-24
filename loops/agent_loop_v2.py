@@ -10,7 +10,7 @@ from tools.registry import build_tool_registry, tool_specs_for_names
 from .base import BaseAgentLoop
 
 
-class V2ToolsLoop(BaseAgentLoop):
+class V2(BaseAgentLoop):
     def __init__(
         self,
         *,
@@ -18,7 +18,6 @@ class V2ToolsLoop(BaseAgentLoop):
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
-        # Teaching point: v2 uses only two built-in demo tools.
         self.tool_names: Set[str] = {"calculate", "get_current_time"}
         self.tools: List[ToolSpec] = tool_specs_for_names(self.tool_names)
         self.max_tool_rounds = max_tool_rounds

@@ -52,4 +52,5 @@ class LLMClient(Protocol):
         timeout_seconds: int = 60,
         stream: bool = False,
         on_text_delta: Callable[[str], None] | None = None,
+        should_abort: Callable[[], bool] | None = None,
     ) -> AssistantResponse: ...

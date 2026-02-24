@@ -1,0 +1,9 @@
+flowchart TD
+    A["Agent loop step"] --> B["SummarizationMiddleware inspects messages"]
+    B --> C{"Over threshold?"}
+    C -- "No" --> Z["Call model normally"]
+    C -- "Yes" --> D["Pick summarizable history window"]
+    D --> E["Run summarization prompt to compress history"]
+    E --> F["Inject compressed summary back to context"]
+    F --> G["Retain recent key turns"]
+    G --> H["Continue next model/tool iteration"]

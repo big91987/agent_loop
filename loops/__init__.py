@@ -1,16 +1,22 @@
-from .agent_loop_v1_basic import V1BasicLoop
-from .agent_loop_v2_tools import V2ToolsLoop
-from .agent_loop_v3_tools import V3ToolsLoop
-from .agent_loop_v4_mcp_tools import V4MCPToolsLoop
-from .agent_loop_v5_skill_tools import V5SkillToolsLoop
 from .base import AgentLoopState, BaseAgentLoop
+from .agent_loop_v1 import V1
+from .agent_loop_v2 import V2
+from .agent_loop_v3 import V3
+from .agent_loop_v4 import V4
+from .agent_loop_v4_1 import V4_1
+from .agent_loop_v5 import V5
+from .agent_loop_v6 import V6
+from .agent_loop_v6_1 import V6_1
 
 __all__ = [
     "AgentLoopState",
     "BaseAgentLoop",
-    "V1BasicLoop",
-    "V2ToolsLoop",
-    "V3ToolsLoop",
-    "V4MCPToolsLoop",
-    "V5SkillToolsLoop",
+    "V1",
+    "V2",
+    "V3",
+    "V4",
+    "V4_1",
+    "V5",
+    "V6",
+    "V6_1",
 ]

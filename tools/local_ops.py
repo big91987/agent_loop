@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import asyncio
 from pathlib import Path
 from typing import Iterable
 
@@ -182,4 +183,37 @@ def run_bash(*, command: str, cwd: str | None = None, timeout: int = 30) -> str:
 
     if result.returncode != 0:
         raise RuntimeError(f"{output}\n\nCommand exited with code {result.returncode}")
+    return output
+
+
+async def run_bash_async(*, command: str, cwd: str | None = None, timeout: int = 30) -> str:
+    command_cwd = str(resolve_target(cwd or ".", None))
+    process = await asyncio.create_subprocess_shell(
+        command,
+        cwd=command_cwd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+    except asyncio.TimeoutError as err:
+        process.kill()
+        await process.wait()
+        raise RuntimeError(f"Command timed out after {timeout} seconds") from err
+    except asyncio.CancelledError:
+        if process.returncode is None:
+            process.terminate()
+            try:
+                await asyncio.wait_for(process.wait(), timeout=1.0)
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+        raise
+
+    out = stdout.decode("utf-8", errors="replace").rstrip("\n")
+    err = stderr.decode("utf-8", errors="replace").rstrip("\n")
+    parts = [part for part in [out, err] if part]
+    output = "\n".join(parts) if parts else "(no output)"
+    if process.returncode != 0:
+        raise RuntimeError(f"{output}\n\nCommand exited with code {process.returncode}")
     return output

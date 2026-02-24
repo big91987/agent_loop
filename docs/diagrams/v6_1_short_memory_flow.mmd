@@ -1,0 +1,17 @@
+flowchart TD
+    A["User input"] --> B["Append to raw_messages + working_messages"]
+    B --> C["Call model with working_messages"]
+    C --> D["Tool loop (if any) and assistant final"]
+    D --> E["Persist session markdown (raw track)"]
+    E --> F["Estimate/collect current working prompt tokens"]
+    F --> G{"Auto-compact enabled?"}
+    G -- "No" --> H["Next turn"]
+    G -- "Yes" --> I{"used >= context_window * ratio ?"}
+    I -- "No" --> H
+    I -- "Yes" --> J["Split by turn boundary: keep recent turns"]
+    J --> K["Summarize old prefix -> [SESSION SUMMARY v6.1]"]
+    K --> L["Rebuild working_messages = summary + kept recent turns"]
+    L --> M["Record compaction metadata (threshold/ratio/used)"]
+    M --> H
+
+    N["Manual /memory compress"] --> J

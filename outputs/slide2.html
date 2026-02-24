@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+html { background: #ffffff; }
+body {
+  width: 720pt; height: 405pt; margin: 0; padding: 0;
+  background: linear-gradient(180deg, #3C3B6E 0%, #FFFFFF 40%);
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  background: #B22234;
+  padding: 15pt 30pt;
+  display: flex;
+  align-items: center;
+}
+.flag-strip {
+  width: 15pt;
+  height: 40pt;
+  background: #FFFFFF;
+  margin-right: 20pt;
+}
+.header h1 {
+  color: #FFFFFF;
+  font-size: 28pt;
+  margin: 0;
+  font-weight: bold;
+}
+.content {
+  flex: 1;
+  padding: 25pt 40pt;
+  display: flex;
+  gap: 30pt;
+}
+.left-panel {
+  width: 280pt;
+  background: #F0F0F0;
+  border-radius: 12pt;
+  padding: 20pt;
+  box-shadow: 2px 2px 8px rgba(0,0,0,0.15);
+}
+.right-panel {
+  flex: 1;
+  background: #FFFFFF;
+  border-radius: 12pt;
+  padding: 20pt;
+  box-shadow: 2px 2px 8px rgba(0,0,0,0.15);
+}
+.section-title {
+  color: #3C3B6E;
+  font-size: 16pt;
+  font-weight: bold;
+  margin-bottom: 12pt;
+  border-bottom: 3px solid #B22234;
+  padding-bottom: 5pt;
+}
+ul {
+  margin: 0;
+  padding-left: 18pt;
+}
+li {
+  color: #333333;
+  font-size: 12pt;
+  margin-bottom: 8pt;
+  line-height: 1.4;
+}
+.stat-box {
+  background: #3C3B6E;
+  border-radius: 8pt;
+  padding: 12pt;
+  margin-bottom: 15pt;
+  text-align: center;
+}
+.stat-number {
+  color: #FFFFFF;
+  font-size: 28pt;
+  font-weight: bold;
+}
+.stat-label {
+  color: #FFFFFF;
+  font-size: 10pt;
+  margin-top: 4pt;
+}
+.map-placeholder {
+  background: #E8E8E8;
+  border: 2px dashed #999;
+  border-radius: 8pt;
+  height: 140pt;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 15pt;
+}
+.map-icon {
+  width: 60pt;
+  height: 40pt;
+  border: 2px solid #3C3B6E;
+  border-radius: 4pt;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: #3C3B6E;
+  font-size: 12pt;
+  font-weight: bold;
+  margin-bottom: 8pt;
+}
+.swing-states {
+  color: #666666;
+  font-size: 10pt;
+  text-align: center;
+}
+.highlight {
+  color: #B22234;
+  font-weight: bold;
+}
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="flag-strip"></div>
+    <h1>选举制度与关键州</h1>
+  </div>
+  
+  <div class="content">
+    <div class="left-panel">
+      <p class="section-title">选举人团制度</p>
+      <div class="stat-box">
+        <p class="stat-number">270</p>
+        <p class="stat-label">选举人票获胜门槛</p>
+      </div>
+      <ul>
+        <li>全美共 <span class="highlight">538</span> 张选举人票</li>
+        <li>各州按人口分配选举人票</li>
+        <li>除缅因和内布拉斯加外，<span class="highlight">胜者全得</span>制度</li>
+        <li>总统候选人需获270票方可当选</li>
+      </ul>
+      
+      <p class="section-title" style="margin-top: 20pt;">2024年关键日期</p>
+      <ul>
+        <li><span class="highlight">7月</span> - 民主党全国代表大会</li>
+        <li><span class="highlight">7月</span> - 共和党全国代表大会</li>
+        <li><span class="highlight">9月</span> - 总统辩论</li>
+        <li><span class="highlight">11月5日</span> - 投票日</li>
+      </ul>
+    </div>
+    
+    <div class="right-panel">
+      <p class="section-title">摇摆州地图</p>
+      <div class="map-placeholder">
+        <div class="map-icon">🗳️</div>
+        <p style="color: #666; font-size: 11pt; margin: 0;">7个关键摇摆州</p>
+      </div>
+      <p class="section-title" style="margin-top: 0;">2024摇摆州</p>
+      <ul>
+        <li><span class="highlight">宾夕法尼亚</span> - 19票</li>
+        <li><span class="highlight">乔治亚</span> - 16票</li>
+        <li><span class="highlight">密歇根</span> - 15票</li>
+        <li><span class="highlight">亚利桑那</span> - 11票</li>
+        <li><span class="highlight">威斯康星</span> - 10票</li>
+        <li><span class="highlight">内华达</span> - 6票</li>
+        <li><span class="highlight">北卡罗来纳</span> - 16票</li>
+      </ul>
+      <p class="swing-states">* 摇摆州投票结果往往决定最终选举走向</p>
+    </div>
+  </div>
+</body>
+</html>

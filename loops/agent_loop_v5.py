@@ -1,0 +1,301 @@
+from __future__ import annotations
+
+import inspect
+import json
+from typing import Callable, Dict, List, Set
+
+from core.mcp_client import MCPManager
+from core.skill_loader import SkillLoader
+from core.types import ToolSpec
+from tools.bash_tool import BashTool
+from tools.registry import build_tool_registry, tool_specs_for_names
+
+from .base import BaseAgentLoop
+
+
+class V5SkillToolsLoop(BaseAgentLoop):
+    def __init__(
+        self,
+        *,
+        max_tool_rounds: int = 8,
+        default_tool_cwd: str | None = None,
+        verbose: bool = True,
+        trace_callback: Callable[[str], None] | None = None,
+        status_callback: Callable[[str], None] | None = None,
+        model_delta_callback: Callable[[str], None] | None = None,
+        mcp_manager: MCPManager | None = None,
+        mcp_enabled: bool = False,
+        skills_dir: str | None = None,
+        **kwargs: object,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.tool_names: Set[str] = {"read", "write", "edit", "grep", "find", "ls"}
+        core_tools = tool_specs_for_names(self.tool_names)
+        self.max_tool_rounds = max_tool_rounds
+        self.default_tool_cwd = default_tool_cwd
+        self.verbose = verbose
+        self.trace_callback = trace_callback
+        self.status_callback = status_callback
+        self.model_delta_callback = model_delta_callback
+
+        self.mcp_manager = mcp_manager
+        self.mcp_enabled = mcp_enabled and mcp_manager is not None
+        self._mcp_tools: List[ToolSpec] = []
+
+        self._base_system_prompt = self.state.system_prompt
+        self.skill_loader = SkillLoader(skills_dir)
+        self.active_skill_name: str | None = None
+        self._base_tools: List[ToolSpec] = [*core_tools, BashTool().to_spec(), self._build_read_skill_tool()]
+        self.tools: List[ToolSpec] = list(self._base_tools)
+        self._tool_registry: Dict[str, ToolSpec] = build_tool_registry(self.tools)
+
+    @staticmethod
+    def _summarize_text(text: str, *, limit: int = 120) -> str:
+        one_line = " ".join(text.split())
+        if len(one_line) <= limit:
+            return one_line
+        return f"{one_line[:limit]}..."
+
+    def _emit_trace(self, line: str) -> None:
+        if self.verbose:
+            print(line)
+        if self.trace_callback is not None:
+            self.trace_callback(line)
+
+    def _emit_status(self, status: str) -> None:
+        if self.status_callback is not None:
+            self.status_callback(status)
+
+    def _print_tool_call(self, name: str, args: Dict[str, object]) -> None:
+        args_text = json.dumps(args, ensure_ascii=False, sort_keys=True)
+        self._emit_trace(f"[TOOL CALL] {name} args={self._summarize_text(args_text, limit=160)}")
+
+    def _print_tool_result(self, name: str, output: str) -> None:
+        summary = self._summarize_text(output)
+        self._emit_trace(f"[TOOL RESULT] {name} {summary}")
+
+    def _print_mcp_call(self, tool_name: str, params: Dict[str, object]) -> None:
+        args = json.dumps(params, ensure_ascii=False, sort_keys=True)
+        self._emit_trace(f"[MCP CALL] {tool_name} args={args}")
+
+    def _print_skill_call(self, skill_name: str) -> None:
+        self._emit_trace(f"[SKILL CALL] read_skill name={skill_name}")
+
+    def list_skills(self) -> list[str]:
+        return self.skill_loader.list_skill_names()
+
+    def use_skill(self, name: str) -> bool:
+        if self.skill_loader.get(name) is None:
+            return False
+        self.active_skill_name = name
+        return True
+
+    def disable_skill(self) -> None:
+        self.active_skill_name = None
+
+    def _build_read_skill_tool(self) -> ToolSpec:
+        async def _handler(params: Dict[str, object]) -> str:
+            skill_name = str(params.get("name", "")).strip()
+            self._print_skill_call(skill_name or "<empty>")
+            if not skill_name:
+                return "Missing required parameter: name"
+            skill = self.skill_loader.get(skill_name)
+            if not skill:
+                return f"Skill not found: {skill_name}"
+            return (
+                f'<skill name="{skill.name}" location="{skill.path}">\n'
+                f"{skill.content}\n"
+                "</skill>"
+            )
+
+        return ToolSpec(
+            name="read_skill",
+            description=(
+                "Load full instructions for a skill by name. "
+                "Use this when a task matches an available skill from <available_skills>."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Skill name from <available_skills> (for example: pptx).",
+                    },
+                },
+                "required": ["name"],
+                "additionalProperties": False,
+            },
+            handler=_handler,
+        )
+
+    def _build_available_skills_block(self) -> str:
+        lines = ["<available_skills>"]
+        for skill in self.skill_loader.list_skills():
+            lines.extend(
+                [
+                    "  <skill>",
+                    f"    <name>{skill.name}</name>",
+                    f"    <description>{skill.description}</description>",
+                    f"    <location>{skill.path}</location>",
+                    "  </skill>",
+                ],
+            )
+        lines.append("</available_skills>")
+        return "\n".join(lines)
+
+    def _apply_skill_prompt(self) -> None:
+        available_skills = self._build_available_skills_block()
+        preferred = ""
+        if self.active_skill_name:
+            preferred = (
+                "\n\n[Preferred Skill]\n"
+                f"- name: {self.active_skill_name}\n"
+                "Use read_skill to load it if relevant to the user's request."
+            )
+        self.state.system_prompt = (
+            f"{self._base_system_prompt}\n\n"
+            "Skills are loaded with progressive disclosure.\n"
+            "First inspect available skill metadata, then call read_skill(name) only when needed.\n\n"
+            f"{available_skills}"
+            f"{preferred}"
+        )
+
+    async def _rebuild_tools(self, *, refresh_mcp: bool) -> None:
+        mcp_tools: List[ToolSpec] = []
+        if self.mcp_enabled and self.mcp_manager:
+            if refresh_mcp:
+                await self.mcp_manager.refresh_tools()
+            exposed = self.mcp_manager.get_exposed_tools()
+            for external_name in self.mcp_manager.list_external_tool_names():
+                meta = exposed.get(external_name, {})
+                parameters = meta.get("parameters")
+                if not isinstance(parameters, dict):
+                    parameters = {"type": "object", "properties": {}, "additionalProperties": True}
+                description = str(meta.get("description", "MCP tool"))
+
+                async def _handler(params: Dict[str, object], ext_name: str = external_name) -> str:
+                    self._print_mcp_call(ext_name, params)
+                    return await self.mcp_manager.call(ext_name, params)  # type: ignore[arg-type]
+
+                mcp_tools.append(
+                    ToolSpec(
+                        name=external_name,
+                        description=f"[MCP] {description}",
+                        parameters=parameters,
+                        handler=_handler,
+                    ),
+                )
+
+        self._mcp_tools = mcp_tools
+        self.tools = [*self._base_tools, *self._mcp_tools]
+        self._tool_registry = build_tool_registry(self.tools)
+
+    async def set_mcp_enabled(self, enabled: bool) -> None:
+        self.mcp_enabled = enabled and self.mcp_manager is not None
+        await self._rebuild_tools(refresh_mcp=self.mcp_enabled)
+
+    async def refresh_mcp_tools(self) -> None:
+        if not self.mcp_enabled:
+            return
+        await self._rebuild_tools(refresh_mcp=True)
+
+    def list_mcp_tools(self) -> List[str]:
+        if not self.mcp_enabled:
+            return []
+        return sorted(tool.name for tool in self._mcp_tools)
+
+    async def run_turn(self, user_input: str) -> str:
+        self._apply_skill_prompt()
+        if self.mcp_enabled and not self._mcp_tools:
+            await self._rebuild_tools(refresh_mcp=True)
+
+        self.state.messages.append({"role": "user", "content": user_input})
+        final_text = ""
+        hit_round_limit = True
+        self._emit_status("模型回复中")
+
+        for round_index in range(self.max_tool_rounds):
+            if self.verbose:
+                print(f"\n[ROUND {round_index + 1}]")
+                print("[MODEL]")
+            streamed = False
+
+            def _on_text_delta(delta: str) -> None:
+                nonlocal streamed
+                streamed = True
+                if self.verbose:
+                    print(delta, end="", flush=True)
+                if self.model_delta_callback is not None:
+                    self.model_delta_callback(delta)
+
+            response = await self._call_llm(tools=self.tools, on_text_delta=_on_text_delta)
+            if self.verbose:
+                if streamed:
+                    print()
+                elif response.text.strip():
+                    print(response.text.strip())
+
+            assistant_message = {"role": "assistant", "content": response.text}
+            if response.tool_calls:
+                assistant_message["tool_calls"] = [
+                    {
+                        "id": call.id,
+                        "type": "function",
+                        "function": {
+                            "name": call.name,
+                            "arguments": json.dumps(call.arguments, ensure_ascii=True),
+                        },
+                    }
+                    for call in response.tool_calls
+                ]
+            self.state.messages.append(assistant_message)
+
+            if not response.tool_calls:
+                final_text = response.text
+                hit_round_limit = False
+                break
+
+            for call in response.tool_calls:
+                self._emit_status(f"工具调用中: {call.name}")
+                tool = self._tool_registry.get(call.name)
+                if not tool:
+                    tool_output = f"Tool not found: {call.name}"
+                    self._print_tool_call(call.name, call.arguments)
+                else:
+                    call_args = dict(call.arguments)
+                    if call.name in self.tool_names and "cwd" not in call_args and self.default_tool_cwd:
+                        call_args["cwd"] = self.default_tool_cwd
+                    self._print_tool_call(call.name, call_args)
+                    try:
+                        maybe_output = tool.handler(call_args)
+                        if inspect.isawaitable(maybe_output):
+                            tool_output = await maybe_output
+                        else:
+                            tool_output = str(maybe_output)
+                    except Exception as err:  # noqa: BLE001
+                        tool_output = f"Tool execution error: {err}"
+                self._print_tool_result(call.name, tool_output)
+                self.state.messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "name": call.name,
+                        "content": tool_output,
+                    },
+                )
+                self._emit_status("模型回复中")
+
+        if hit_round_limit and not final_text:
+            final_text = (
+                f"[loop warning] reached max_tool_rounds={self.max_tool_rounds}; "
+                "the model kept issuing tool calls and did not produce a final text answer. "
+                "Try asking it to summarize progress or continue from current state."
+            )
+            self.state.messages.append({"role": "assistant", "content": final_text})
+
+        self._emit_status("等待输入")
+        return final_text
+
+
+class V5(V5SkillToolsLoop):
+    pass

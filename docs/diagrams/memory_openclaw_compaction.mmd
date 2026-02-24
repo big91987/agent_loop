@@ -1,0 +1,27 @@
+flowchart TD
+    A["New turn / continue session"] --> B["Estimate context usage (totalTokens)"]
+    B --> C{"Near compaction threshold?"}
+    C -- "No" --> Z["Normal agent loop"]
+    C -- "Yes" --> D["Run pre-compaction memory flush turn (silent)"]
+    D --> E["Model decides whether to write memory/YYYY-MM-DD.md"]
+    E --> F{"Need compaction now?"}
+    F -- "No" --> Z
+    F -- "Yes" --> G["Load transcript history to summarize"]
+    G --> H["Compute token budget and history share"]
+    H --> I{"History exceeds budget?"}
+    I -- "Yes" --> J["Prune oldest chunks first"]
+    I -- "No" --> K["Proceed to summarization"]
+    J --> K
+    K --> L["Chunk messages by token size"]
+    L --> M["Summarize chunk by chunk"]
+    M --> N{"Chunk too large / summary failed?"}
+    N -- "Yes" --> O["Fallback: partial summary + oversized notes"]
+    N -- "No" --> P["Collect partial summaries"]
+    O --> P
+    P --> Q{"Multiple partial summaries?"}
+    Q -- "Yes" --> R["Merge partial summaries with constraints"]
+    Q -- "No" --> S["Use single summary"]
+    R --> T["Write compaction entry into transcript"]
+    S --> T
+    T --> U["Keep recent messages + compacted summary"]
+    U --> V["Update compaction counters and continue loop"]
