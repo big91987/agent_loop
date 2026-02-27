@@ -289,6 +289,10 @@ class V6_1(BaseAgentLoop):
     def hydrate_short_memory_summary(self, summary: str) -> None:
         self._last_compaction_summary = summary.strip()
 
+    def hydrate_short_memory_compaction_state(self, *, session_tokens: int, working_prompt_tokens: int) -> None:
+        self._last_compaction_session_tokens = max(0, int(session_tokens))
+        self._last_compaction_working_prompt_tokens = max(0, int(working_prompt_tokens))
+
     def set_short_memory_auto(self, enabled: bool) -> None:
         self.short_memory_config.auto_enabled = enabled
 

@@ -349,6 +349,7 @@ def _persist_if_needed(
     *,
     memory_summary: str = "",
     token_snapshot: dict[str, int | bool] | None = None,
+    short_memory_state: dict[str, object] | None = None,
 ) -> bool:
     if not _has_user_messages(messages):
         return False
@@ -363,6 +364,9 @@ def _persist_if_needed(
     record.last_completion_tokens = int(snap.get("last_completion_tokens", 0) or 0)
     record.last_total_tokens = int(snap.get("last_total_tokens", 0) or 0)
     record.last_usage_source = str(snap.get("last_usage_source", "none") or "none")
+    sm = short_memory_state or {}
+    record.last_compaction_session_tokens = int(sm.get("last_compaction_session_tokens", 0) or 0)
+    record.last_compaction_working_prompt_tokens = int(sm.get("last_compaction_working_prompt_tokens", 0) or 0)
     store.save(record)
     return True
 
@@ -487,6 +491,13 @@ def _restore_token_baseline_from_record(loop: V6_1, record: SessionRecord) -> No
     _restore_token_baseline(loop)
 
 
+def _restore_short_memory_state_from_record(loop: V6_1, record: SessionRecord) -> None:
+    loop.hydrate_short_memory_compaction_state(
+        session_tokens=max(0, int(record.last_compaction_session_tokens)),
+        working_prompt_tokens=max(0, int(record.last_compaction_working_prompt_tokens)),
+    )
+
+
 def _reset_token_baseline(loop: V6_1) -> None:
     loop._last_usage = None  # type: ignore[attr-defined]
     loop._usage_seen = False  # type: ignore[attr-defined]
@@ -567,13 +578,24 @@ def _activity_status_line(
 ) -> str:
     snap = _token_snapshot(loop)
     st = loop.get_short_memory_state()
-    window_used = int(st.get("working_prompt_tokens", 0))
+    estimated_working = int(st.get("working_prompt_tokens", 0))
+    session_total = int(snap.get("session_total_tokens", 0))
+    last_compaction_session_total = int(st.get("last_compaction_session_tokens", 0))
+    last_prompt_tokens = int(snap.get("last_prompt_tokens", 0))
+    usage_source = str(snap.get("last_usage_source", "none"))
+    # Strict mode:
+    # - Normal case: show provider prompt usage only.
+    # - Right after compaction: show one-shot estimated working prompt so the
+    #   UI can reflect the immediate "jump down".
+    if last_compaction_session_total == session_total:
+        window_used = estimated_working
+    else:
+        window_used = max(0, last_prompt_tokens)
     context_total = max(1, int(context_window_tokens))
     context_ratio = min(1.0, max(0.0, float(window_used) / float(context_total)))
     context_pct = int(round(context_ratio * 100))
     session_prompt = int(snap.get("session_prompt_tokens", 0))
     session_completion = int(snap.get("session_completion_tokens", 0))
-    session_total = int(snap.get("session_total_tokens", 0))
     session_cost = _compute_cost(
         prompt_tokens=session_prompt,
         completion_tokens=session_completion,
@@ -942,6 +964,7 @@ async def async_main() -> int:
         loop.state.messages = list(record.messages)
         loop.set_raw_messages(list(record.messages))
         loop.hydrate_short_memory_summary(record.summary)
+        _restore_short_memory_state_from_record(loop, record)
         _restore_token_baseline_from_record(loop, record)
     else:
         record = store.create(model_name=cfg.model_name, loop_version="v6.1", persist=False)
@@ -1099,6 +1122,7 @@ async def async_main() -> int:
                         loop.get_raw_messages(),
                         memory_summary=str(loop.get_short_memory_state().get("last_compaction_summary", "")),
                         token_snapshot=_token_snapshot(loop),
+                        short_memory_state=loop.get_short_memory_state(),
                     )
                     records = store.list_sessions()
                     if not records:
@@ -1115,10 +1139,13 @@ async def async_main() -> int:
                         loop.get_raw_messages(),
                         memory_summary=str(loop.get_short_memory_state().get("last_compaction_summary", "")),
                         token_snapshot=_token_snapshot(loop),
+                        short_memory_state=loop.get_short_memory_state(),
                     )
                     record = store.create(model_name=cfg.model_name, loop_version="v6.1", persist=False)
                     loop.state.messages = []
                     loop.set_raw_messages([])
+                    loop.hydrate_short_memory_summary("")
+                    loop.hydrate_short_memory_compaction_state(session_tokens=0, working_prompt_tokens=0)
                     _reset_token_baseline(loop)
                     if ui.enabled:
                         ui.hydrate_dialogue_from_messages([], max_messages=16)
@@ -1138,11 +1165,13 @@ async def async_main() -> int:
                         loop.get_raw_messages(),
                         memory_summary=str(loop.get_short_memory_state().get("last_compaction_summary", "")),
                         token_snapshot=_token_snapshot(loop),
+                        short_memory_state=loop.get_short_memory_state(),
                     )
                     record = store.load(sid)
                     loop.state.messages = list(record.messages)
                     loop.set_raw_messages(list(record.messages))
                     loop.hydrate_short_memory_summary(record.summary)
+                    _restore_short_memory_state_from_record(loop, record)
                     _restore_token_baseline_from_record(loop, record)
                     ui.set_session(record.session_id, str(record.file_path))
                     _refresh_activity_status()
@@ -1223,6 +1252,7 @@ async def async_main() -> int:
                             loop.get_raw_messages(),
                             memory_summary=str(loop.get_short_memory_state().get("last_compaction_summary", "")),
                             token_snapshot=_token_snapshot(loop),
+                            short_memory_state=loop.get_short_memory_state(),
                         )
                     else:
                         ui.add(f"[MEMORY] skipped: {result.get('message', 'unknown reason')}")
@@ -1390,6 +1420,7 @@ async def async_main() -> int:
                 loop.get_raw_messages(),
                 memory_summary=str(loop.get_short_memory_state().get("last_compaction_summary", "")),
                 token_snapshot=_token_snapshot(loop),
+                short_memory_state=loop.get_short_memory_state(),
             )
             if saved:
                 ui.add_dialogue("SYSTEM", _saved_turn_badge())

@@ -42,6 +42,8 @@ class SessionRecord:
     last_completion_tokens: int = 0
     last_total_tokens: int = 0
     last_usage_source: str = "none"
+    last_compaction_session_tokens: int = 0
+    last_compaction_working_prompt_tokens: int = 0
 
 
 class SessionStoreV6:
@@ -70,6 +72,8 @@ class SessionStoreV6:
             last_completion_tokens=0,
             last_total_tokens=0,
             last_usage_source="none",
+            last_compaction_session_tokens=0,
+            last_compaction_working_prompt_tokens=0,
         )
         if persist:
             self.save(record)
@@ -117,6 +121,8 @@ class SessionStoreV6:
             last_completion_tokens=int(meta.get("last_completion_tokens", 0) or 0),
             last_total_tokens=int(meta.get("last_total_tokens", 0) or 0),
             last_usage_source=str(meta.get("last_usage_source", "none") or "none"),
+            last_compaction_session_tokens=int(meta.get("last_compaction_session_tokens", 0) or 0),
+            last_compaction_working_prompt_tokens=int(meta.get("last_compaction_working_prompt_tokens", 0) or 0),
         )
 
     def save(self, record: SessionRecord) -> bool:
@@ -144,6 +150,8 @@ class SessionStoreV6:
             "last_completion_tokens": int(record.last_completion_tokens),
             "last_total_tokens": int(record.last_total_tokens),
             "last_usage_source": str(record.last_usage_source),
+            "last_compaction_session_tokens": int(record.last_compaction_session_tokens),
+            "last_compaction_working_prompt_tokens": int(record.last_compaction_working_prompt_tokens),
         }
         readable = self._render_readable(record.messages)
         content = (

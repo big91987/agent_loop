@@ -20,6 +20,7 @@ class AssistantResponse:
     text: str
     tool_calls: List[ToolCall] = field(default_factory=list)
     usage: "TokenUsage | None" = None
+    reasoning: str = ""
 
 
 @dataclass(frozen=True)

@@ -4,8 +4,9 @@ import asyncio
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 from urllib import request
 
 from .types import AssistantResponse, LLMClient, Message, TokenUsage, ToolCall, ToolSpec
@@ -58,6 +59,86 @@ class OpenAICompatClient(LLMClient):
             on_text_delta=on_text_delta,
             should_abort=should_abort,
         )
+
+    @staticmethod
+    def _strip_think_tags(text: str) -> Tuple[str, str]:
+        if not text:
+            return "", ""
+        reasoning_chunks = re.findall(r"(?is)<think>(.*?)</think>", text)
+        visible = re.sub(r"(?is)<think>.*?</think>", "", text)
+        reasoning = "\n".join(chunk.strip() for chunk in reasoning_chunks if chunk.strip()).strip()
+        return visible, reasoning
+
+    @classmethod
+    def _extract_visible_and_reasoning_from_content(cls, content: object) -> Tuple[str, str]:
+        if isinstance(content, str):
+            return cls._strip_think_tags(content)
+
+        if isinstance(content, list):
+            visible_parts: List[str] = []
+            reasoning_parts: List[str] = []
+            for part in content:
+                if isinstance(part, str):
+                    v, r = cls._strip_think_tags(part)
+                    if v:
+                        visible_parts.append(v)
+                    if r:
+                        reasoning_parts.append(r)
+                    continue
+                if not isinstance(part, dict):
+                    continue
+                part_type = str(part.get("type", "")).lower()
+                text_val = part.get("text")
+                if not isinstance(text_val, str):
+                    text_val = ""
+                if part_type in {"text", "output_text"}:
+                    v, r = cls._strip_think_tags(text_val)
+                    if v:
+                        visible_parts.append(v)
+                    if r:
+                        reasoning_parts.append(r)
+                    continue
+                if part_type in {"reasoning", "thinking", "analysis", "reasoning_content"}:
+                    if text_val.strip():
+                        reasoning_parts.append(text_val.strip())
+                    summary = part.get("summary")
+                    if isinstance(summary, list):
+                        for item in summary:
+                            if isinstance(item, dict):
+                                sum_text = item.get("text")
+                                if isinstance(sum_text, str) and sum_text.strip():
+                                    reasoning_parts.append(sum_text.strip())
+            return "".join(visible_parts).strip(), "\n".join(reasoning_parts).strip()
+
+        return "", ""
+
+    @classmethod
+    def _extract_delta_visible_and_reasoning(cls, delta: Dict[str, object]) -> Tuple[str, str]:
+        visible_parts: List[str] = []
+        reasoning_parts: List[str] = []
+
+        content_piece = delta.get("content")
+        if content_piece is not None:
+            v, r = cls._extract_visible_and_reasoning_from_content(content_piece)
+            if v:
+                visible_parts.append(v)
+            if r:
+                reasoning_parts.append(r)
+
+        for key in ("reasoning", "thinking", "reasoning_content", "analysis"):
+            raw = delta.get(key)
+            if isinstance(raw, str) and raw.strip():
+                reasoning_parts.append(raw.strip())
+            elif isinstance(raw, list):
+                for item in raw:
+                    if isinstance(item, dict):
+                        t = item.get("text")
+                        if isinstance(t, str) and t.strip():
+                            reasoning_parts.append(t.strip())
+                    elif isinstance(item, str) and item.strip():
+                        reasoning_parts.append(item.strip())
+
+        return "".join(visible_parts), "\n".join(reasoning_parts).strip()
 
     def _generate_sync(
         self,
@@ -117,7 +198,9 @@ class OpenAICompatClient(LLMClient):
                 choice = data["choices"][0]["message"]
                 if self.logger:
                     self.logger.debug("raw response message: %s", json.dumps(choice, ensure_ascii=False, indent=2))
-                text = str(choice.get("content") or "")
+                text, reasoning = self._extract_visible_and_reasoning_from_content(choice.get("content"))
+                if self.logger and reasoning:
+                    self.logger.debug("model reasoning: %s", reasoning)
                 raw_tool_calls = choice.get("tool_calls") or []
                 tool_calls: List[ToolCall] = []
                 for raw_call in raw_tool_calls:
@@ -136,12 +219,14 @@ class OpenAICompatClient(LLMClient):
                         ),
                     )
                 return AssistantResponse(
-                    text=text,
+                    text=text.strip(),
                     tool_calls=tool_calls,
                     usage=self._parse_usage(data.get("usage")),
+                    reasoning=reasoning,
                 )
 
             text_parts: List[str] = []
+            reasoning_parts: List[str] = []
             # index -> {"id": str, "name": str, "arguments": str}
             tool_call_buffers: Dict[int, Dict[str, str]] = {}
             usage: TokenUsage | None = None
@@ -171,11 +256,13 @@ class OpenAICompatClient(LLMClient):
                 if not isinstance(delta, dict):
                     continue
 
-                content_piece = delta.get("content")
-                if isinstance(content_piece, str) and content_piece:
-                    text_parts.append(content_piece)
+                visible_piece, reasoning_piece = self._extract_delta_visible_and_reasoning(delta)
+                if visible_piece:
+                    text_parts.append(visible_piece)
                     if on_text_delta is not None:
-                        on_text_delta(content_piece)
+                        on_text_delta(visible_piece)
+                if reasoning_piece:
+                    reasoning_parts.append(reasoning_piece)
 
                 raw_tool_calls = delta.get("tool_calls")
                 if isinstance(raw_tool_calls, list):
@@ -220,7 +307,16 @@ class OpenAICompatClient(LLMClient):
                     ),
                 )
 
-            return AssistantResponse(text="".join(text_parts), tool_calls=tool_calls, usage=usage)
+            reasoning_text = "\n".join(reasoning_parts).strip()
+            if self.logger and reasoning_text:
+                self.logger.debug("model reasoning (stream): %s", reasoning_text)
+
+            return AssistantResponse(
+                text="".join(text_parts).strip(),
+                tool_calls=tool_calls,
+                usage=usage,
+                reasoning=reasoning_text,
+            )
 
     @staticmethod
     def _parse_usage(raw_usage: object) -> TokenUsage | None:
