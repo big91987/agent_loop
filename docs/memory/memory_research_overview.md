@@ -1,6 +1,6 @@
 # Agent Memory Research Overview (Teaching Draft)
 
-> 快速入口：建议先读 `/Users/admin/work/agent_loop/docs/memory_focus_overview.md`，再回到本文看细节与扩展对比。
+> 快速入口：建议先读 `/Users/admin/work/agent_loop/docs/memory/memory_focus_overview.md`，再回到本文看细节与扩展对比。
 
 ## 1. 先立整体认知框架（短期 vs 长期）
 
@@ -46,11 +46,13 @@ LLM 本体只有短期记忆；Agent memory 是窗口外的长期机制。
 | Claude Code (cc) | 会话连续性 + 规则常驻上下文 | 分层 `CLAUDE.md`（规则/偏好） |
 | OpenCode (oc) | 每轮 system + 路径提醒，控制会话行为 | 规则文件主导，弱结构化长记忆 |
 | OpenClaw | compaction + flush + 检索注入混合 | `MEMORY.md` + `memory/*` + memory tools |
+| Claude-mem | Claude Code 插件化长期记忆 | 观察流压缩 + MCP 检索工具 + progressive disclosure |
 | Mem0 | 短期更多依赖外层编排 | 抽取-检索-更新流水线（服务化） |
 | Zep/Graphiti | 会话中按需图检索回填 | 图谱时序长期记忆 |
 | Letta/MemGPT | working memory + 上下文迁移 | core/archival 分层长期记忆 |
 | SimpleMem/Supermemory | 轻量压缩与检索回填 | 以事实记忆服务为核心 |
 | EverMemOS | 分层调度与生命周期管理 | Memory OS 级长期治理 |
+| OpenViking | 上下文数据库（文件系统范式） | 分层加载（L0/L1/L2）+ 可观测检索轨迹 |
 | Agent-KB | 任务中经验复用 | 程序记忆/经验知识库 |
 | AMemGym | 不提供生产短期层 | 评测长期记忆策略效果 |
 
@@ -154,12 +156,14 @@ LLM 本体只有短期记忆；Agent memory 是窗口外的长期机制。
 | Claude Code (cc) | 文件规则记忆 | 会话内靠消息窗口 + 规则常驻；超长靠上下文压缩与轮次控制 | 通过分层 `CLAUDE.md`（企业/项目/用户）人工维护与版本化 | 交互式 coding assistant |
 | OpenCode (oc) | 文件规则 + 路径增强 | 每轮重建 system 规则；按 `read(path)` 动态追加路径规则提醒 | 以 `AGENTS.md/CLAUDE.md` 文件更新为主，长期记忆主要靠规则文件演进 | 交互式 coding assistant |
 | OpenClaw | 文件+检索混合 | 运行中做 compaction；压缩前可触发 flush；按需把检索结果回填当前回合 | 写入 `MEMORY.md`/`memory/*.md`；通过 `memory_search/get` + 索引刷新维护可检索长期记忆 | 本地/服务化 agent |
+| Claude-mem | Claude Code 记忆插件 | 会话内工具轨迹采集与压缩，跨会话回填索引摘要 | 以 observation 形式持久化，依靠 MCP `search/get_observations` 按需取回细节 | Claude Code 增强 |
 | MemGPT / Letta | 分层 memory 架构 | working memory 随会话滚动；窗口压力下把历史迁移为可检索形态 | core/archival 分层存储；通过 memory tools 做增删改查与持续整理 | 长期代理系统 |
 | Mem0 | 抽取-检索流水线 | 短期上下文通常由宿主 agent loop 负责裁剪/压缩 | 回合后抽取记忆并 `add/update/delete`；检索 `search` top-k 注入；策略化冲突更新 | 助手/客服/企业应用 |
 | Zep (Graphiti) | 图谱时序记忆 | 当前回合按需图检索，把高相关节点/边注入上下文 | 将事件持续写入时序图谱，维护实体关系与时间演化，支持增量更新 | 关系密集任务 |
 | simplemem | 轻量检索记忆 | 用紧凑摘要块回填上下文，降低短期 token 压力 | 对历史内容做压缩提炼与去重合并，再入长期存储并按意图检索 | 成本敏感场景 |
 | Supermemory | 记忆 API 层 | 每轮通过 API 检索片段并注入上下文 | 通过 `add/search/update` 管理记忆与关系（updates/extends 等），内置生命周期策略 | 多工具集成 |
 | EverMemOS | Memory OS 工程化 | 任务执行时按层调度当前需要的记忆片段 | 采用编码-巩固-检索的分层管线，做长期治理（更新、压缩、淘汰） | 企业长期记忆 |
+| OpenViking | Context DB | 目录分层按需加载上下文，检索轨迹可视化 | 统一 memory/resources/skills 为文件系统路径（`viking://`），支持 session 结束后记忆迭代 | 长会话 agent 与上下文工程 |
 | Agent-KB | 经验知识库 | 当前任务先检索相似经验并作为执行参考 | 持续沉淀成功任务流程与策略，按任务类型维护经验库 | 多 agent 协作 |
 | AMemGym | 评测框架 | 通过 on-policy 交互评测短期上下文管理是否有效 | 通过长期任务评测写入/召回/更新策略效果，不直接提供生产存储层 | memory 方法比较 |
 
@@ -172,11 +176,13 @@ LLM 本体只有短期记忆；Agent memory 是窗口外的长期机制。
 | Claude Code (cc) | Policy、Profile（规则类记忆清晰） | Fact/Episode 的结构化检索与冲突消解能力较弱 |
 | OpenCode (oc) | Policy、局部 Episode（read 路径增强） | 跨会话 Fact 图谱与 Procedure 沉淀能力有限 |
 | OpenClaw | Policy + Fact + Episode（文件+检索混合） | Procedure 自动提炼质量依赖检索与总结策略 |
+| Claude-mem | Episode + Fact（开发轨迹观察） | 通用 Policy 治理与多场景记忆模型能力较弱（偏 Claude Code 场景） |
 | Mem0 | Fact、Profile、部分 Procedure（抽取-检索流程） | Policy 治理通常需要外层系统补齐；抽取错误会污染 |
 | Zep / Graphiti | Fact、Episode、Procedure（关系/时序强） | Policy 规则表达不如文件规则直观；系统复杂度高 |
 | Letta / MemGPT | 分层记忆较均衡（working/core/archival） | 工程门槛和运维复杂度较高 |
 | MemOS / EverMemOS | 大规模分层治理与生命周期管理 | 对教学仓库偏重，落地成本高 |
 | Supermemory / SimpleMem | Fact 检索效率与注入控制 | 复杂关系推理与高质量 Procedure 演进较弱 |
+| OpenViking | Policy/Fact/Procedure 的分层目录治理 | 生态与标准化仍在早期，落地细节依赖其上下文数据库栈 |
 | Agent-KB | Procedure（经验复用） | 不是基础 memory 全栈，Policy/实时 Episode 依赖外部 |
 
 一句话总结：
@@ -218,12 +224,14 @@ LLM 本体只有短期记忆；Agent memory 是窗口外的长期机制。
 | Claude Code (cc) | 官方产品持续迭代，memory 文档稳定 | 分层 `CLAUDE.md` 规则记忆；启动加载 + 子树按需加载 | 本地代码助手、团队规范执行 | Policy/Profile 记忆清晰，可审计 | 结构化 Fact/Episode 自动治理弱 | [Memory](https://docs.anthropic.com/en/docs/claude-code/memory), [Settings](https://docs.anthropic.com/en/docs/claude-code/settings) |
 | OpenCode (oc) | 开源项目活跃，规则文档持续更新 | 每轮 system 注入规则；`read(path)` 时追加路径相关提醒 | 交互式 coding agent | 规则注入直观，工程可解释 | 跨会话结构化长记忆能力有限 | [Rules](https://opencode.ai/docs/rules/) |
 | OpenClaw | 开源框架，memory 插件化能力完整 | `MEMORY.md` + `memory/*.md`；每轮 bootstrap + `memory_search/get` 按需检索 | 本地或服务化 agent | 固定注入 + 检索召回平衡 | 检索质量依赖索引与配置 | [Memory](https://docs.openclaw.ai/concepts/memory), [CLI memory](https://docs.openclaw.ai/cli/memory) |
+| Claude-mem | 生态插件增长快（Claude Code 场景） | 自动采集会话 observation，压缩后按需检索回填（MCP search/get） | 长代码会话、跨 session continuity | 对 Claude Code 工作流贴合，渐进披露节省 token | 生态绑定 Claude Code，通用框架迁移成本存在 | [GitHub](https://github.com/thedotmack/claude-mem), [Docs](https://docs.claude-mem.ai/introduction) |
 | Letta / MemGPT | 从论文到产品框架，MemGPT 思想清晰 | core memory 常驻 + archival/conversation 检索；memory tools 可编辑记忆 | 长期个性化助手、长对话系统 | 分层记忆体系完整 | 上手和工程复杂度较高 | [Architecture](https://docs.letta.com/guides/agents/architectures/memgpt), [Concept](https://docs.letta.com/concepts/letta/) |
 | Mem0 | 产品+OSS 双线，文档完善 | 抽取-存储-检索-更新 CRUD；支持更新策略定制 | 客服、CRM、个性化应用 | Fact/Profile 抽取与检索工程化强 | 错误抽取会污染；Policy 需外层治理 | [Add](https://docs.mem0.ai/core-concepts/memory-operations/add), [Update](https://docs.mem0.ai/core-concepts/memory-operations/update), [Custom prompt](https://docs.mem0.ai/open-source/features/custom-update-memory-prompt) |
 | Zep / Graphiti | 图谱记忆路线成熟，生态持续建设 | 事件抽取为时序知识图，语义+关键词+图检索融合 | 关系密集、时间敏感任务 | Fact/Episode/Procedure 关系推理强 | 实现与运维复杂度高 | [Paper](https://arxiv.org/abs/2501.13956), [Graphiti](https://github.com/getzep/graphiti) |
 | SimpleMem | 新近开源，学术热度上升 | 语义压缩 -> 在线合成 -> 意图感知检索规划 | 成本敏感的长期记忆 | 高压缩与检索效率 | 生态成熟度仍在发展 | [Repo](https://github.com/aiming-lab/SimpleMem), [Paper](https://arxiv.org/abs/2601.02553) |
 | Supermemory | API 产品化明显，接入友好 | 图记忆关系（updates/extends/derives）+ 混合检索与重排 | 快速接入 memory API 的产品 | 接入快，更新/遗忘机制工程化 | 深层时序推理依赖外层编排 | [Graph Memory](https://supermemory.ai/docs/concepts/graph-memory), [Search](https://supermemory.ai/docs/search) |
 | EverMemOS | 开源 Memory OS 路线，企业叙事明显 | 编码（MemCell）-> 巩固（分层）-> 感知检索（多策略） | 长期企业记忆系统 | 分层治理完整 | 实施成本高，教学起步偏重 | [Repo](https://github.com/EverMind-AI/EverMemOS), [Paper](https://arxiv.org/abs/2601.02163) |
+| OpenViking | 新兴 Context DB 路线（Volcengine 团队） | 文件系统范式统一 memory/resources/skills；分层加载 + 检索轨迹可观测 | 强调上下文工程、可调试检索链路 | 可观测性强，层级加载节省 token | 项目较新，生态成熟度仍在形成 | [PyPI](https://pypi.org/project/openviking/), [Overview](https://jimmysong.io/ai/open-viking/) |
 | Agent-KB | 研究方向明确，偏经验层 | 将历史成功经验沉淀为可复用知识，按任务检索 | 多 agent 协作、重复任务 | Procedure 经验复用强 | 非基础 memory 全栈 | [Paper](https://arxiv.org/abs/2507.06229) |
 | AMemGym | 评测框架（非 memory 引擎） | on-policy 交互环境中评测写入/召回质量 | memory 方法对比、回归评测 | 诊断写入失败/召回失败有效 | 不直接提供生产 memory 服务 | [OpenReview](https://openreview.net/forum?id=sfrVLzsmlf) |
 
@@ -236,12 +244,14 @@ LLM 本体只有短期记忆；Agent memory 是窗口外的长期机制。
 | Claude Code (cc) | 分层规则记忆与项目规范注入 | 文件规则加载、层级覆盖、会话上下文管理 | 自动抽取事实库、复杂冲突消解 |
 | OpenCode (oc) | 每轮规则注入 + 路径相关提醒 | system 规则组装、`read(path)` 触发增强 | 跨会话结构化长期记忆治理 |
 | OpenClaw | 文件记忆 + 检索回填 + compaction/flush | `memory_search`、`memory_get`、memory 文件写入、索引刷新 | 默认不强结构化抽取，质量依赖提示词 |
+| Claude-mem | Claude Code 的 observation 记忆闭环 | observation capture、压缩、MCP 检索（search/timeline/get/save） | 强依赖 Claude Code 与插件生态 |
 | Letta / MemGPT | 分层记忆（working/core/archival）与持续会话 | memory CRUD、分层检索、记忆工具调用 | 低成本轻量接入；工程复杂度较高 |
 | Mem0 | 长期记忆抽取-更新-检索服务化 | `add`、`search`、`update`、`delete`、批量操作 | 严格规则治理（Policy）通常需外置系统 |
 | Zep / Graphiti | 图谱时序记忆与关系检索 | 事件 ingest、graph query、时序/关系检索 | 简单项目中的低成本快速落地 |
 | SimpleMem | 压缩提炼 + 轻量检索 | 记忆压缩、去重合并、意图检索 | 复杂关系推理和企业级治理 |
 | Supermemory | API 化记忆接入与关系更新 | `add/search/update`、hybrid search、rerank | 高定制多层策略编排 |
 | EverMemOS | 分层 memory OS 治理 | 编码/巩固/检索流水线、生命周期管理 | 轻量教学 demo、快速接入场景 |
+| OpenViking | 上下文数据库 + 分层检索 | `viking://` 路径空间、L0/L1/L2 按需加载、轨迹可观测 | 生态早期，产品化形态仍在演进 |
 | Agent-KB | 经验知识复用 | 经验采集、标签索引、任务检索 | 基础全栈 memory（事实+规则+画像） |
 | AMemGym | memory 策略评测 | on-policy 环境、写入/召回指标评测接口 | 生产记忆存储与在线服务 |
 
@@ -342,7 +352,7 @@ LLM 本体只有短期记忆；Agent memory 是窗口外的长期机制。
 
 #### 4.6.1 OpenClaw（工程化最重）
 
-![OpenClaw Compaction Flow](./diagrams/memory_openclaw_compaction.svg)
+![OpenClaw Compaction Flow](../diagrams/memory_openclaw_compaction.svg)
 
 实现备注（基于源码与本地核对）：
 
@@ -352,11 +362,11 @@ LLM 本体只有短期记忆；Agent memory 是窗口外的长期机制。
 
 #### 4.6.2 OpenCode (oc)（轻量压缩路径）
 
-![OpenCode Compaction Flow](./diagrams/memory_oc_compaction.svg)
+![OpenCode Compaction Flow](../diagrams/memory_oc_compaction.svg)
 
 #### 4.6.3 deer-flow（middleware 风格）
 
-![Deer-Flow Summarization Flow](./diagrams/memory_deerflow_compaction.svg)
+![Deer-Flow Summarization Flow](../diagrams/memory_deerflow_compaction.svg)
 
 #### 4.6.4 对比结论
 
@@ -451,6 +461,10 @@ LLM 本体只有短期记忆；Agent memory 是窗口外的长期机制。
 - EverMemOS: https://github.com/EverMind-AI/EverMemOS
 - SimpleMem: https://github.com/aiming-lab/SimpleMem
 - Supermemory Docs: https://docs.supermemory.ai/
+- Claude-mem GitHub: https://github.com/thedotmack/claude-mem
+- Claude-mem Docs: https://docs.claude-mem.ai/introduction
+- OpenViking PyPI: https://pypi.org/project/openviking/
+- OpenViking Overview: https://jimmysong.io/ai/open-viking/
 - Agent-KB: https://arxiv.org/abs/2507.06229
 - LongMemEval: https://arxiv.org/abs/2410.10813
 - LoCoMo: https://arxiv.org/abs/2402.17753

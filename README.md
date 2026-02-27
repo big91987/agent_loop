@@ -347,6 +347,8 @@ v4 示例 server（stdio）：
 - `context`：当前工作上下文占用（`system + working_messages`），用于判断是否触发压缩；会随对话增长，压缩后下降。
 - `session(p/c/t)`：会话累计 token（`p=input`, `c=output`, `t=total`），只增不减。
 - `turn(p/c/t)`：当前回合增量 token（显示在对话区 assistant 每轮后缀），回合结束后清零进入下一回合统计。
+- 当前实现简化点：`context` 判定未纳入 `limit.output` 预留和 `cache.read`（KV cache 命中）细分口径。
+- 生产化建议：补齐 `usable_input = context_window - reserved_output` 与 `input + cache.read (+output)` 的 overflow 判定，并在计费里区分 cache read/write（KV cache 命中可显著降本）。
 
 `context` 变化趋势示意：
 
@@ -385,8 +387,9 @@ context_used
   - 保留最近完整 user turns，压缩更老前缀
   - 仅实现“主摘要”路径
   - 目前未实现 split-turn 专用的 `turn prefix summary`（即你说的 turn 摘要）
+  - 已知小瑕疵：压缩触发时机与 token 展示口径在极端长工具链场景下仍有偏差；当前版本以教学可读性优先，生产级需再做更细化对齐
 - pi-mono 短期记忆机制（含 work msg 持久化与 compaction 恢复）：
-  - `docs/pi_mono_short_memory_mechanism.md`
+  - `docs/memory/pi_mono_short_memory_mechanism.md`
 
 - 启动示例：
 ```bash
@@ -412,6 +415,10 @@ python3 cli_v6_1.py --config ./configs/v6_1_short_memory.json --memory-compact-r
 - MCP 原理与实现说明：`docs/mcp_principles.md`
 - Skill 原理与实现说明：`docs/skill_principles.md`
 - DeepAgents 中间件机制说明：`docs/deepagents_principles.md`
-- Memory 注入与 loop 时机对比（CC / OpenCode / OpenClaw）：`docs/memory_architecture_compare.md`
-- Memory 大白话综述 + 系统扫描 + Benchmark/SOTA：`docs/memory_research_overview.md`
-- pi-mono 短期记忆机制详解：`docs/pi_mono_short_memory_mechanism.md`
+- Memory 文档目录：`docs/memory/README.md`
+- Memory 注入与 loop 时机对比（CC / OpenCode / OpenClaw）：`docs/memory/memory_architecture_compare.md`
+- 记忆系统调研（大白话版，归档）：`docs/memory/memory_systems_plain_guide.md`
+- MemU 单产品深度调研（原理/流程/能力/跑分）：`docs/memory/memory_product_memu.md`
+- Memory 大白话综述 + 系统扫描 + Benchmark/SOTA：`docs/memory/memory_research_overview.md`
+- 长期记忆专门说明（对象模型/主流方案/接口与 loop）：`docs/memory/long_term_memory_principles.md`
+- pi-mono 短期记忆机制详解：`docs/memory/pi_mono_short_memory_mechanism.md`

@@ -64,6 +64,8 @@
 | Claude Code / OpenCode / Codex（这类 code agent） | 主要在 loop 中做上下文管理与压缩 | 主要依赖用户维护规则文件（如 `CLAUDE.md` / `AGENTS.md`），自动抽取相对少 |
 | Cursor | 会话层短期管理同样存在 | 在规则文件之外，提供一定自动 memory 能力（仓库作用域） |
 | OpenClaw | loop 内有 compaction、flush、检索回填 | `MEMORY.md` + `memory/*.md` + memory tools；默认更偏“落盘+检索”，非强结构化抽取 |
+| Claude-mem | 依赖 Claude Code 会话流，侧重 observation 压缩与回填 | 通过 MCP 的 search/get_observations 按需召回，不做全量注入 |
+| OpenViking | 以分层上下文加载控制短期窗口膨胀 | 把 memory/resources/skills 统一成路径空间（`viking://`），强调可观测检索轨迹 |
 | 独立 memory 组件（Mem0/Supermemory/Zep 等） | 通常由宿主 agent 负责短期层 | 更聚焦长期层自动治理：抽取、更新、逐出、冲突处理、检索注入 |
 
 阶段性结论：

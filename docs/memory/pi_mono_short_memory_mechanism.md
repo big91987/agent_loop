@@ -16,7 +16,7 @@
 
 ## 流程图（总览）
 
-![pi-mono short memory flow](./diagrams/pi_mono_short_memory_flow.svg)
+![pi-mono short memory flow](../diagrams/pi_mono_short_memory_flow.svg)
 
 ## 1. 设计目标（从源码行为反推）
 
