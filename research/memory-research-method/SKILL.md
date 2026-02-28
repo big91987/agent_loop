@@ -23,6 +23,24 @@ Always use this order:
 4. Root-cause mapping (link behavior to code path)
 5. Decision-oriented conclusion
 
+## Mechanism-First Writing Rule (hard requirement)
+
+Do not write mechanism sections as "call sequence + file path list".
+For each component, you must explain mechanism in this fixed order:
+1. Extraction: how raw dialogue becomes memory items
+2. Storage: how items are persisted/updated/scoped
+3. Retrieval: how query becomes recalled items/ranked items
+4. Loop injection: how recalled memory is injected back into agent context (if applicable)
+
+For each mechanism step, always include:
+- Input objects
+- Processing logic
+- Output objects
+- Failure modes
+- One minimal example
+
+Code paths are evidence only. They cannot replace mechanism explanation.
+
 ## Mandatory Evidence Rule (Open-source)
 
 If the target is open-source, do not write a conclusion from docs alone.
@@ -31,6 +49,21 @@ You must do both:
 2. Run a real test set (or reproducible minimal benchmark) and attach raw output
 
 No "final assessment" is allowed without these two evidence types.
+
+## Collaboration Escalation Rule (must follow)
+
+If you cannot complete a required validation in the current environment, do **not** downgrade to a shallow conclusion.
+You must immediately:
+1. State the exact blocker (command + exact error).
+2. State what has already been verified and what remains unverified.
+3. Ask the user for targeted help to unblock (credentials/network/dependency/toolchain/runtime permissions).
+4. Resume full-depth validation after unblock, using the same benchmark and output format.
+
+Examples of blockers that require escalation:
+- API/network/DNS failures
+- missing runtime dependencies that cannot be installed in-session
+- missing local services (DB/vector store)
+- filesystem/permission restrictions
 
 ## Concept Model (must explain first)
 
@@ -56,6 +89,11 @@ Use exactly three targets:
 - trigger correctness: should retrieval be triggered?
 - recall effectiveness: after trigger, does it hit expected memory?
 - recall purity: does it include irrelevant memory?
+
+Additionally, for each product, define 1-3 **sellpoint probes**:
+- each probe must map to a product-claimed differentiator (from docs/code)
+- each probe must be executable (not just conceptual)
+- each probe must produce side-by-side output (baseline vs probe condition)
 
 ### Step 2: Build test cases
 
@@ -100,6 +138,18 @@ For each failure, map to mechanism:
 - hit with noise -> ranking/filtering layer
 
 Attach code evidence with minimal key paths only.
+
+### Step 6: Sellpoint-to-Evidence mapping (mandatory)
+
+For each claimed product advantage, provide:
+- Claim: what the product says it is good at
+- Mechanism: how code implements that claim
+- Probe Design: how we test this claim
+- Observed Output: raw output snippet from the probe
+- Assessment: verified / partially verified / not verified
+
+Do not accept "feature exists in code" as proof of advantage.
+The advantage must be demonstrated by probe output.
 
 ## Report Structure Template
 

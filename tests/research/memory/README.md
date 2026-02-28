@@ -35,3 +35,28 @@ conda run -n py312 python /Users/admin/work/agent_loop/tests/research/memory/run
 输出归档：
 
 - `/Users/admin/work/agent_loop/backups/memu/runs/memu_rich_demo_real_output.txt`
+
+## Mem0（真实测试）
+
+- 脚本：`run_mem0_rich_demo_real.py`
+- 用途：对齐 MemU 的 Case13 测试方式，读取同一测试集，执行 `mem0.add`（memorize）+ 多 query `mem0.search`，完整打印输入对话、memorize 请求与结果、每个 query 的检索结果。
+- 默认测试集：`data/agent_memory_case13_shared.md`
+
+运行命令：
+
+```bash
+export MINIMAX_API_KEY='...'
+export ZHIPU_API_KEY='...'
+/Users/admin/miniconda3/envs/py312/bin/python /Users/admin/work/agent_loop/tests/research/memory/run_mem0_rich_demo_real.py \
+  --config /Users/admin/work/agent_loop/configs/default.json \
+  --benchmark-path /Users/admin/work/agent_loop/tests/research/memory/data/agent_memory_case13_shared.md \
+  --benchmark-case auto \
+  --retrieve-query-set daily_habits
+```
+
+常用参数：
+
+- `--embed-dims`: 显式指定 embedding 维度（>0 时跳过自动探测）
+- `--mem0-dir`: 指定 `MEM0_DIR` 可写目录（默认在仓库 `backups/memu/mem0_runtime`）
+- `--max-retrieve-cases`: 限制 query 数量，便于先跑小样
+- 卖点探针默认执行：脚本会自动对比 `infer=True vs infer=False`、`metadata+filters` 的检索差异
