@@ -23,6 +23,66 @@ Always use this order:
 4. Root-cause mapping (link behavior to code path)
 5. Decision-oriented conclusion
 
+## README/Paper-First Framing Rule (hard requirement)
+
+Before section "1. Component Positioning", every product report must include:
+- `0. README/论文亮点（先看这个）`
+
+This section must contain:
+1. 3-6 product-claimed differentiators from README/paper (plain language)
+2. One-line engineering meaning for each differentiator
+3. A mapping line: `亮点 -> 本文后续章节` (where each claim is validated or bounded)
+
+If the report starts directly from code flow without this section, it is incomplete.
+
+## Claim-to-Evidence Mapping Rule (hard requirement)
+
+For every major product claim in section 0, the report must later provide:
+1. Mechanism evidence (code path)
+2. Validation evidence (real benchmark/probe output)
+3. Final status: verified / partially verified / not verified
+
+Do not allow disconnected writing like:
+- front section says "great feature"
+- later sections never test or bound that feature
+
+Every key claim must be closed-loop.
+
+## Paper-vs-Reproduction Separation Rule (hard requirement)
+
+For paper-backed systems (e.g., SimpleMem), you must separate:
+1. `论文/README主张` (what the paper claims)
+2. `本轮复现实测` (what we actually validated now)
+
+Required format:
+- one explicit subsection for claims
+- one explicit subsection for this round's verification scope and limits
+- do not mix paper SOTA numbers into reproduction conclusion unless reproduced
+
+## Validation Section Focus Rule (hard requirement)
+
+In the report's validation section, always optimize for student comprehension:
+1. Keep theory/mechanism chapters stable; do not rewrite them when only validation feedback is requested.
+2. Structure validation strictly by:
+   - `测试目标1：原理可观测性`
+   - `测试目标2：抽取结果与存储形态`
+   - `测试目标3：抽取/检索效果与不足分析`
+3. For each target, present `论文主张 -> 可观测信号 -> 实测证据 -> 结论`.
+4. Explicitly separate strengths and gaps; for gaps, explain why they happen (routing/ranking/scope/top-k/noise, etc.).
+
+## Evidence List Rule (hard requirement)
+
+Do not force readers to manually search huge logs.
+Each report must contain an explicit "证据清单" section with:
+1. Direct evidence snippets (short raw lines/blocks)
+2. What each snippet proves
+3. Raw output file path for full traceability
+
+If raw output is very long:
+- keep full output in referenced artifact file
+- include key evidence snippets in report body
+- do not dump massive raw output into the main report
+
 ## Mechanism-First Writing Rule (hard requirement)
 
 Do not write mechanism sections as "call sequence + file path list".
@@ -40,6 +100,46 @@ For each mechanism step, always include:
 - One minimal example
 
 Code paths are evidence only. They cannot replace mechanism explanation.
+
+## Extraction Paradigm Rule (hard requirement)
+
+Before writing any mechanism section, you must explicitly classify extraction paradigm:
+1. LLM extraction
+2. Rule extraction
+3. Hybrid extraction (LLM + rule validation/normalization)
+
+And you must answer all 4 items with code evidence:
+- Who does extraction (model vs parser/regex/rules)?
+- Where extraction prompt/instruction is defined (if model-based)?
+- Where schema/type normalization happens (if any)?
+- What is persisted after normalization?
+
+If this classification is missing, the report is incomplete.
+
+## End-to-End Product Rule (module isolation required)
+
+For end-to-end products (gateways/assistants with many subsystems), memory is often only one module.
+Do not evaluate memory by running full product flows only.
+
+You must add a module-level harness plan:
+1. Identify direct memory module entry points.
+2. Call memory module in isolation (or run module-scoped tests).
+3. Keep non-memory channels/features out of the validation path.
+
+If full E2E is run, it is supplementary evidence only.
+Primary evidence must still come from memory-module execution.
+
+## Persistence Topology Audit (mandatory)
+
+Every report must explicitly answer:
+1. Memory is stored as what medium? (file / sqlite / vector DB / graph DB / mixed)
+2. Where is it stored? (exact path pattern)
+3. Which layer is source-of-truth vs index/cache?
+4. Read/write lifecycle: when data is flushed, indexed, retrieved, compacted.
+
+Required output artifact:
+- one storage topology table with medium + path + role + durability
+- one short "how to inspect locally" section (commands or script)
 
 ## Mandatory Evidence Rule (Open-source)
 
@@ -112,8 +212,9 @@ Recommended coverage:
 
 ### Step 3: Run and collect full raw output
 
-Never only provide a link.
-In report body, include raw output blocks directly.
+Always save full raw output to a reproducible artifact file.
+In report body, include key evidence snippets plus artifact path.
+Do not rely on link-only reporting, and do not flood the main report with giant logs.
 
 Minimum fields to extract per query:
 - `needs_retrieval`
@@ -163,7 +264,7 @@ Use this 5-section structure:
 ## Writing Style Constraints
 
 - concept-first, then mechanism, then result
-- show raw output before interpretation
+- show key raw evidence before interpretation
 - avoid generic claims without query-level evidence
 - prefer concise language; avoid long theoretical background
 - use repo-relative paths in docs
@@ -173,7 +274,8 @@ Use this 5-section structure:
 Before finalizing, ensure:
 - [ ] product-specific core terms are defined with examples
 - [ ] case format is uniform (`Query-N + Expected Recall-N`)
-- [ ] raw test output is embedded in report
+- [ ] key evidence snippets are embedded in report
+- [ ] full raw output artifact path is provided
 - [ ] summary table exists and is query-level
 - [ ] conclusions are tied to observed results, not assumptions
 - [ ] paths are relative, not absolute

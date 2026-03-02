@@ -1,6 +1,22 @@
 # MemU 源码调研（先会用，再看内部实现）
 
+## 0. README/论文亮点（先看这个）
+
+基于 MemU 公开文档与开源实现，核心主张是：
+- `Memorize / Retrieve` 双流水线：写入与检索分离
+- `Item-Type-Category` 三层结构：条目、性质、主题分层组织
+- `Route intention`：检索前先判断“是否需要查记忆”
+- `可配置策略`：memory types/categories、排序与检索策略可调
+
+本报告后文映射关系：
+- 双流水线与三层对象对应 `1. 先给结论` 与 `3. 整体流程`
+- SDK 最小用法对应 `2. 你该怎么用`
+- 真实效果与边界对应 `4/5/6`（Case13 验证与结论）
+
 这版只讲源码里已经实现的东西，不讲宣传话术。
+
+术语先读：
+- `docs/memory/memory_terms_compare.md`（MemU 是少数把 `item/type/category` 做成一等对象且可配置的系统）
 
 ---
 
@@ -10,6 +26,14 @@
 2. `memorize` 和 `retrieve` 都是“工作流流水线”，不是单函数硬编码。  
 3. “三层”在开源实现里是 **Resource / Item / Category 三类对象**，底层存储是数据库（inmemory/sqlite/postgres），不是你本地目录自动产出三层文件树。  
 4. 排序支持两种：`similarity` 和 `salience(相似度 × 强化次数 × 时间衰减)`。
+
+### 1.1 本系统术语与对象模型（MemU 原生）
+
+- 最小对象名词：`item`
+- 二级组织：`type` + `category`
+- 关联对象：`resource`、`relations`
+
+说明：`item/type/category` 是 MemU 的原生设计，不应被当成其他系统的通用术语。
 
 源码证据：
 - `/tmp/memU/src/memu/app/service.py:49`

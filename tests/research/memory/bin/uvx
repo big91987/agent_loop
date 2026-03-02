@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Shim for claude-mem's hardcoded `uvx --python X chroma-mcp ...`
+# so we can run against a preinstalled `chroma-mcp` Python package directly.
+out=()
+skip_next=0
+for arg in "$@"; do
+  if [[ "$skip_next" == "1" ]]; then
+    skip_next=0
+    continue
+  fi
+  if [[ "$arg" == "--python" ]]; then
+    skip_next=1
+    continue
+  fi
+  if [[ "$arg" == "chroma-mcp" ]]; then
+    continue
+  fi
+  out+=("$arg")
+done
+
+exec /Users/admin/.local/bin/chroma-mcp "${out[@]}"

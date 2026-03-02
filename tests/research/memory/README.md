@@ -60,3 +60,119 @@ export ZHIPU_API_KEY='...'
 - `--mem0-dir`: 指定 `MEM0_DIR` 可写目录（默认在仓库 `backups/memu/mem0_runtime`）
 - `--max-retrieve-cases`: 限制 query 数量，便于先跑小样
 - 卖点探针默认执行：脚本会自动对比 `infer=True vs infer=False`、`metadata+filters` 的检索差异
+
+## SimpleMem（真实测试）
+
+- 脚本：`run_simplemem_case13_real.py`
+- 用途：读取共享 Case13，执行 `add_dialogue -> finalize -> hybrid_retriever.retrieve`，打印完整输入对话、完整记忆条目、每个 query 的完整召回结果。
+
+运行命令：
+
+```bash
+export MINIMAX_API_KEY='...'
+/Users/admin/miniconda3/envs/py312/bin/python /Users/admin/work/agent_loop/tests/research/memory/run_simplemem_case13_real.py \
+  --config /Users/admin/work/agent_loop/configs/default.json \
+  --benchmark-path /Users/admin/work/agent_loop/tests/research/memory/data/agent_memory_case13_shared.md \
+  --benchmark-case auto \
+  --retrieve-query-set daily_habits
+```
+
+输出归档：
+
+- `/Users/admin/work/agent_loop/backups/memory/simplemem_case13_output.txt`
+
+## OpenViking（真实测试）
+
+- 脚本：`run_openviking_case13_real.py`
+- 用途：读取共享 Case13，执行 `session add_message -> commit_session` 完成长期记忆抽取，再对同一查询集执行 `search/find`（目标目录固定在 memories），打印完整输入、完整抽取日志、完整检索结果。
+
+运行命令：
+
+```bash
+export MINIMAX_API_KEY='...'
+export ZHIPU_API_KEY='...'
+/Users/admin/miniconda3/envs/py312/bin/python /Users/admin/work/agent_loop/tests/research/memory/run_openviking_case13_real.py \
+  --config /Users/admin/work/agent_loop/configs/default.json \
+  --benchmark-path /Users/admin/work/agent_loop/tests/research/memory/data/agent_memory_case13_shared.md \
+  --benchmark-case auto \
+  --retrieve-query-set daily_habits
+```
+
+输出归档：
+
+- `/Users/admin/work/agent_loop/backups/memory/openviking_case13_output.txt`
+
+## OpenClaw Memory（模块探针）
+
+- 脚本：`run_openclaw_memory_module_probe.sh`
+- 用途：对端到端产品做 memory 子模块隔离验证，直接运行 memory 相关单测，避免被其他系统噪声干扰。
+
+运行命令：
+
+```bash
+bash /Users/admin/work/agent_loop/tests/research/memory/run_openclaw_memory_module_probe.sh /Users/admin/work/openclaw
+```
+
+默认覆盖：
+- `backend-config` / `index` / `memory-flush`
+- `hybrid` / `temporal-decay` / `manager.read-file` / `qmd-scope`
+
+Case13 统一测试（完整输出）：
+
+```bash
+cp /Users/admin/work/agent_loop/tests/research/memory/openclaw_case13_vitest.test.ts /Users/admin/work/openclaw/src/memory/case13.probe.test.ts
+cd /Users/admin/work/openclaw
+bun x vitest run src/memory/case13.probe.test.ts > /Users/admin/work/agent_loop/backups/memory/openclaw_case13_output.txt
+```
+
+## Claude-mem（模块探针）
+
+- 脚本：`run_claude_mem_module_probe.sh`
+- 用途：直接验证 claude-mem 的 SQLite 存储层与 search 编排层，不依赖完整插件工作流。
+
+运行命令：
+
+```bash
+bash /Users/admin/work/agent_loop/tests/research/memory/run_claude_mem_module_probe.sh /tmp/memory_scan_round2/claude-mem
+```
+
+默认覆盖：
+- `tests/sqlite/observations.test.ts`
+- `tests/sqlite/summaries.test.ts`
+- `tests/worker/search/search-orchestrator.test.ts`
+- `tests/worker/search/result-formatter.test.ts`
+
+Case13 统一测试（完整输出）：
+
+```bash
+cd /tmp/memory_scan_round2/claude-mem
+bun /Users/admin/work/agent_loop/tests/research/memory/run_claude_mem_case13_real.ts > /Users/admin/work/agent_loop/backups/memory/claude_mem_case13_output.txt
+```
+
+## Letta / MemGPT（真实测试）
+
+- 脚本：`run_letta_case13_real.py`
+- 用途：启动本地 Letta 服务，写入 Case13 全量对话到 archival passages，再跑 Query-1..8 检索。
+
+运行命令：
+
+```bash
+/Users/admin/miniconda3/envs/py312/bin/python /Users/admin/work/agent_loop/tests/research/memory/run_letta_case13_real.py \
+  --benchmark-path /Users/admin/work/agent_loop/tests/research/memory/data/agent_memory_case13_shared.md \
+  --benchmark-case auto \
+  --retrieve-query-set daily_habits > /Users/admin/work/agent_loop/backups/memory/letta_case13_output.txt
+```
+
+## memos（真实测试）
+
+- 脚本：`run_memos_case13_real.py`
+- 用途：启动本地 memos，创建用户并登录，把 Case13 对话逐条写入 memo，再用 Query-1..8 检索。
+
+运行命令：
+
+```bash
+/Users/admin/miniconda3/envs/py312/bin/python /Users/admin/work/agent_loop/tests/research/memory/run_memos_case13_real.py \
+  --benchmark-path /Users/admin/work/agent_loop/tests/research/memory/data/agent_memory_case13_shared.md \
+  --benchmark-case auto \
+  --retrieve-query-set daily_habits > /Users/admin/work/agent_loop/backups/memory/memos_case13_output.txt
+```
