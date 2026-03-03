@@ -59,6 +59,29 @@ OpenClaw 是端到端产品，memory 是其中一个模块。
 - 本轮实测 `backend=builtin`
 - `memory search --query ... --json` 返回 `results[].snippet`
 
+### 2.4 Memory Flush 的真实执行机制（这次补充）
+
+- `memory flush` 不是对外工具调用（不是 `memory_flush(...)` 这种 tool）。
+- 它是 loop 内部触发的一次“独立子任务”，触发条件由工程阈值判断（context window / reserve / soft threshold / compaction 计数）。
+- 这次子任务不是“空上下文新任务”，而是复用当前会话的 `sessionFile/sessionId/sessionKey/workspace` 去跑。
+- 也就是说：`flush` 是“同一会话上的专门回合”，只是在 prompt 上切到 memory-flush 目标。
+
+对应代码定位（教学用）：
+- 触发与执行入口：`/Users/admin/work/openclaw/src/auto-reply/reply/agent-runner-memory.ts`
+  - `runMemoryFlushIfNeeded(...)`
+  - 其中调用 `runEmbeddedPiAgent(...)`
+- 阈值与默认 flush prompt：`/Users/admin/work/openclaw/src/auto-reply/reply/memory-flush.ts`
+  - `shouldRunMemoryFlush(...)`
+  - `DEFAULT_MEMORY_FLUSH_PROMPT`
+  - `DEFAULT_MEMORY_FLUSH_SYSTEM_PROMPT`
+- 复用当前会话上下文的参数构建：`/Users/admin/work/openclaw/src/auto-reply/reply/agent-runner-utils.ts`
+  - `buildEmbeddedRunBaseParams(...)`
+  - `buildEmbeddedRunContexts(...)`
+
+一句话结论：
+- `memory_search/memory_get` 是模型可自主触发的 agentic 工具；
+- `memory flush` 是工程治理流程触发的内部回合（内容由模型生成，触发时机由工程判定）。
+
 ## 3. 测试验证（论文主张 ↔ 实测结果对齐）
 
 ### 3.1 目标1：原理可观测性

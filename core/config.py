@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +28,11 @@ class AppConfig:
     pricing_output_per_million: float | None = None
     pricing_cache_read_per_million: float | None = None
     pricing_cache_write_per_million: float | None = None
+    workspace_path: str | None = None
+    memory_user_id: str = "default"
+    memory_system_dir: str = "./memory_systems/simplemem_v1"
+    memory_store_path: str = "./memory/v6_2_long_memory.jsonl"
+    memory_store_path_template: str | None = None
 
 
 _ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -34,6 +40,14 @@ _ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 def _is_env_var_name(value: str) -> bool:
     return bool(_ENV_NAME_PATTERN.match(value))
+
+
+def _resolve_memory_store_path(template: str, memory_user_id: str) -> str:
+    try:
+        resolved = template.format(user=memory_user_id, memory_user_id=memory_user_id)
+    except Exception:
+        resolved = template
+    return resolved.strip() or "./memory/v6_2_long_memory.jsonl"
 
 
 def load_config(path: str) -> AppConfig:
@@ -159,6 +173,25 @@ def load_config(path: str) -> AppConfig:
     pricing_output_per_million = _to_float_or_none(raw.get("pricing_output_per_million"))
     pricing_cache_read_per_million = _to_float_or_none(raw.get("pricing_cache_read_per_million"))
     pricing_cache_write_per_million = _to_float_or_none(raw.get("pricing_cache_write_per_million"))
+    memory_system_dir = str(raw.get("memory_system_dir", "./memory_systems/simplemem_v1")).strip() or "./memory_systems/simplemem_v1"
+    workspace_path_raw = raw.get("workspace_path")
+    workspace_path = str(workspace_path_raw).strip() if workspace_path_raw is not None else None
+    if workspace_path == "":
+        workspace_path = None
+
+    memory_user_id_raw = raw.get("memory_user_id")
+    memory_user_id = str(memory_user_id_raw).strip() if memory_user_id_raw is not None else ""
+    if not memory_user_id:
+        memory_user_id = str(os.environ.get("MEMORY_USER_ID", "")).strip() or str(os.environ.get("USER", "")).strip() or "default"
+
+    memory_store_path_template_raw = raw.get("memory_store_path_template")
+    memory_store_path_template = str(memory_store_path_template_raw).strip() if memory_store_path_template_raw is not None else ""
+    memory_store_path_raw = str(raw.get("memory_store_path", "./memory/v6_2_long_memory.jsonl")).strip() or "./memory/v6_2_long_memory.jsonl"
+    memory_store_path = (
+        _resolve_memory_store_path(memory_store_path_template, memory_user_id)
+        if memory_store_path_template
+        else memory_store_path_raw
+    )
 
     return AppConfig(
         provider=str(raw["provider"]),
@@ -177,4 +210,9 @@ def load_config(path: str) -> AppConfig:
         pricing_output_per_million=pricing_output_per_million,
         pricing_cache_read_per_million=pricing_cache_read_per_million,
         pricing_cache_write_per_million=pricing_cache_write_per_million,
+        workspace_path=workspace_path,
+        memory_user_id=memory_user_id,
+        memory_system_dir=memory_system_dir,
+        memory_store_path=memory_store_path,
+        memory_store_path_template=memory_store_path_template or None,
     )

@@ -1,0 +1,84 @@
+{
+  "system_id": "simplemem_v1",
+  "memory_record": {
+    "fields": [
+      "id",
+      "type",
+      "scope",
+      "content",
+      "tags",
+      "confidence",
+      "source",
+      "version",
+      "created_at",
+      "updated_at",
+      "expires_at",
+      "deleted_at"
+    ],
+    "type_enum": [
+      "policy",
+      "profile",
+      "fact",
+      "preference",
+      "episode",
+      "procedure",
+      "todo"
+    ],
+    "scope_enum": [
+      "global",
+      "user",
+      "project",
+      "session"
+    ]
+  },
+  "tools": {
+    "mem_get": {
+      "required": [
+        "query"
+      ],
+      "properties": {
+        "query": "string",
+        "scope": "string",
+        "types": "string[]",
+        "top_k": "int",
+        "min_score": "float"
+      }
+    },
+    "mem_set": {
+      "required": [
+        "type",
+        "scope",
+        "content"
+      ],
+      "properties": {
+        "type": "string",
+        "scope": "string",
+        "content": "string",
+        "tags": "string[]",
+        "confidence": "float",
+        "source": "string"
+      }
+    },
+    "mem_update": {
+      "required": [
+        "id",
+        "patch"
+      ],
+      "properties": {
+        "id": "string",
+        "patch": "object",
+        "expected_version": "int"
+      }
+    },
+    "mem_delete": {
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": "string",
+        "mode": "soft|hard",
+        "expected_version": "int"
+      }
+    }
+  }
+}

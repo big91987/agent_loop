@@ -16,6 +16,12 @@
     - `pricing_output_per_million`: output token unit price (per 1,000,000 tokens)
     - `pricing_cache_read_per_million`: cache-read token unit price (reserved field)
     - `pricing_cache_write_per_million`: cache-write token unit price (reserved field)
+- `v6_2_memory_simplemem.json`: v6.2 profile for short-memory + long-memory tools.
+  - `workspace_path` (optional): workspace root; relative `sessions/logs/history/memory` paths are resolved under it
+  - when `workspace_path` is not set, paths stay relative to current working directory (`pwd`)
+  - `memory_user_id`: logical memory owner id (for isolation)
+  - `memory_store_path_template`: long-memory store template; supports `{user}` or `{memory_user_id}`
+  - `memory_store_path`: fixed long-memory store path (used when template is not provided)
 
 `mcpServers.<name>.type` supported values:
 - `stdio`: use `command` + `args` + `env`
@@ -37,4 +43,6 @@ python3 cli.py --config ./configs/v4_1_mcp_playwright.json --loop v4.1
 python3 cli.py --config ./configs/v4_1_mcp_amap_node.json --loop v4.1
 python3 cli.py --config ./configs/v5_skill_pi_style.json --loop v5
 python3 cli_v6_1.py --config ./configs/v6_1_short_memory.json
+python3 cli_v6_2.py --config ./configs/v6_2_memory_simplemem.json
+python3 cli_v6_2.py --config ./configs/v6_2_memory_simplemem.json --workspace-path /tmp/demo_workspace
 ```
