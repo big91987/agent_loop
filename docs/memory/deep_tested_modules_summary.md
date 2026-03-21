@@ -19,7 +19,7 @@
 | OpenClaw Memory | 已深测 | Case13 真实验证完成 |
 | Claude-mem | 已深测 | Case13 真实验证完成 |
 | SimpleMem | 已深测 | Case13 真实验证完成 |
-| OpenViking | 已深测 | Case13 真实验证完成 |
+| OpenViking | 已深测 | Case13 真实验证完成；clean env 下已确认真实 `.md` 落盘与 reopen 检索可用 |
 | Letta / MemGPT | 已深测（当前配置效果弱） | 脚本跑通，但本轮检索命中差 |
 | memos | 已深测（当前策略效果弱） | 脚本跑通，但关键词 contains 检索弱 |
 | EverMemOS | 部分完成 | 机制和链路已深挖，Case13 全量结果仍在调优阶段 |
@@ -39,7 +39,7 @@
 | OpenClaw Memory | `MEMORY.md + memory/*.md + snippet`：记忆本体是 Markdown，检索返回片段。 | 把记忆当 Markdown 文件维护，再做片段检索。 | 最容易人工维护和审计，产品可解释性强。 | 容易宽召回，结果常带无关上下文。 | 个人助手、开发工具，强调“人可以直接改记忆”。 |
 | Claude-mem | `observation`：每条记忆是结构化观察对象，落 SQLite/Chroma。 | 先把对话整理成 observation，再落 SQLite/Chroma 双存储检索。 | 结构化和工程复杂度平衡好，链路清晰。 | 当前实测中，查询区分度一般，偏向近期内容。 | 需要结构化记忆、又不想系统过重的助手产品。 |
 | SimpleMem | `memory entry`：字段化条目（topic/keywords/time 等）作为最小单位。 | 先过滤低价值内容，再把高价值内容原子化为 entry，最后检索。 | 抽取质量高，条目可读性非常好，教学价值高。 | 本轮检索偏宽，精排优势还没被强证据证明。 | 教学/研究场景，强调“先抽好，再检索”。 |
-| OpenViking | `viking://.../memories/*`：记忆是路径空间下的文件对象。 | 会话提交后自动抽取成 memory 文件，放进统一 `viking://` 路径空间。 | “抽取+存储+检索”一体化，路径化组织直观。 | 根目录检索时结果偏宽，需要更细粒度约束。 | 想把 memory 当“上下文数据库”统一管理的系统。 |
+| OpenViking | `viking://.../memories/*`：记忆是路径空间下的文件对象。 | 会话提交后自动抽取成 memory 文件，落到 `viking/.../*.md`，同时写 `vectordb` 索引。 | “抽取+存储+检索”一体化，路径化组织直观，内容层和索引层都可观测。 | 根目录检索时结果偏宽，abstract 质量一般，需要更细粒度约束。 | 想把 memory 当“上下文数据库”统一管理的系统。 |
 | Letta / MemGPT | `agent state + archival passages`：运行态记忆 + 档案态记忆双层。 | 记忆是 agent runtime 内建能力（运行态 + 档案态双层）。 | 架构上最接近“原生有记忆的 agent”。 | 本轮 case13 检索命中差（0/8），配置仍需深调。 | 强调 agent runtime 一体化的长期项目。 |
 | memos | `memo`：一条 memo 就是一条记忆文本笔记。 | 把记忆当笔记存下来，靠文本过滤检索。 | 部署简单、改起来方便、审计成本低。 | 对自然语言 query 检索弱，单独用很难当“智能记忆引擎”。 | 适合作为外部记忆仓，不适合单独承担记忆推理。 |
 | EverMemOS | `MemCell -> episode/event_log/foresight/profile`：先形成记忆段，再抽多类对象。 | 先判定“是否到分段边界”，产出 MemCell 后再做多类型抽取与检索。 | 最大亮点是“何时写入”有一级控制，不是每条消息都盲存。 | 全量 Case13 仍在调优；触发策略和耗时需要继续打磨。 | 生产级记忆中台，前提是基础设施和链路配置齐全。 |

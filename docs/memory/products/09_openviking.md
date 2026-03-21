@@ -60,13 +60,22 @@ OpenViking 是“上下文数据库”形态，memory 只是其子模块之一�
 
 ## 3. 测试验证（论文主张 ↔ 实测结果对齐）
 
+### 3.0 本轮最终口径（以 clean env 复测为准）
+
+为避免 `py312` 环境里的依赖污染，本轮最终结论以专用环境 `openviking-clean` 下的真实复测为准。
+
+最终确认：
+- `写入`：通。真实 `.md` 记忆文件已经落到 `workspace_case13_1773479686/viking/...`。
+- `检索`：通。`glob/search/find/read` 都能返回和读取真实 memory URI。
+- `问题焦点`：不是“没落盘”，也不是“完全检索异常”，而是**检索排序和 abstract 质量一般**。
+
 ### 3.1 目标1：了解原理是否可观测
 
 | 主张 | 可观测信号 | 实测 | 结论 |
 |---|---|---|---|
 | 会话可抽取长期记忆 | 日志里出现 `Extracted N candidate memories` | 出现：`Extracted 9 candidate memories` | 抽取链路生效 |
-| 记忆会被持久化 | memory 文件 URI 被创建 | 出现多个 `Created memory file: viking://.../memories/...` | 落盘链路生效 |
-| 可对 memory 范围检索 | `search/find` 返回 `memories` | Query-1..8 都返回 `memories` | 检索链路生效 |
+| 记忆会被持久化 | memory 文件 URI 被创建，且本地 `.md` 可见 | 真实文件存在于 `workspace_case13_1773479686/viking/default/user/default/memories/...` | 落盘链路生效 |
+| 可对 memory 范围检索 | `search/find/read` 返回 `memories` URI 且可读正文 | `glob` 列出 9 个 memory URI，`read(uri)` 可读正文 | 检索链路生效 |
 
 ### 3.2 目标2：Case13 最终提取了什么、怎么存
 
@@ -81,49 +90,72 @@ OpenViking 是“上下文数据库”形态，memory 只是其子模块之一�
 - 记忆路径：`viking://user/default/memories/...`
 - 文件分层：`profile.md` + `preferences/*.md` + `entities/*.md` + `events/*.md`
 
+本轮最终确认到的真实内容层路径（相对 `workspace_case13_1773479686/`）：
+- `viking/default/user/default/memories/profile.md`
+- `viking/default/user/default/memories/preferences/*.md`
+- `viking/default/user/default/memories/entities/*.md`
+- `viking/default/user/default/memories/events/*.md`
+
+索引层路径：
+- `vectordb/store/*`
+- `vectordb/context/index/default/versions/*`
+
+说明：
+- `viking/...` 存**可读正文**
+- `vectordb/...` 存**检索索引**
+
 ### 3.3 目标3：抽取/检索效果与不足分析
 
 抽取效果：
 - 关键记忆点覆盖度较好，Case13 的主事实都进入 memory 文件。
 
 检索效果：
-- Query-1..8 都有返回（`search` 和 `find` 均有 `memories[]`）。
-- 但返回集合偏大，且存在“目录 URI 也进结果”的现象（如 `viking://user/default/memories/entities`），说明结果纯度/精排仍有提升空间。
+- 检索接口本身是通的：`search`、`find`、`read` 都能工作。
+- 例如 query `给我推荐个咖啡。` 时，Top1 能命中咖啡偏好文件：
+  - `viking://user/default/memories/preferences/mem_68e75dee-5bb8-4d5d-9292-9ee74111d658.md`
+- 但后续高位结果仍混入：
+  - 王家卫剧偏好
+  - 靠窗座位偏好
+  - 香菜偏好
+- 这说明当前问题在**排序不够干净**，不是“搜不到”。
 
 不足原因（本次可见层面）：
 - 检索目标路径是整个 memories 根目录，当前更偏宽召回。
 - 输出层没有明显按 query 强约束收敛到少量最相关记忆。
+- `abstract` 字段质量一般，出现过长摘要和 `<think>` 风格噪声；但底层 `.md` 正文是正常的。
 
 ## 4. 学生证据清单（已摘好）
 
 原始输出：
 - `backups/memory/openviking_case13_output.txt`
+- `backups/memory/openviking_runtime/workspace_case13_1773479686`
 
 关键证据：
 - 抽取触发：`Extracted 9 candidate memories (language=zh-CN)`
-- 持久化：
-  - `Created profile at viking://user/default/memories/profile.md`
-  - `Created memory file: viking://user/default/memories/preferences/...`
-  - `Created memory file: viking://user/default/memories/entities/...`
-  - `Created memory file: viking://user/default/memories/events/...`
+- 持久化（clean env 最终实物）：
+  - `workspace_case13_1773479686/viking/default/user/default/memories/profile.md`
+  - `workspace_case13_1773479686/viking/default/user/default/memories/preferences/mem_68e75dee-5bb8-4d5d-9292-9ee74111d658.md`
+  - `workspace_case13_1773479686/viking/default/user/default/memories/entities/mem_5e8166c3-d33b-4d10-9f3b-aca5b5106d19.md`
+  - `workspace_case13_1773479686/viking/default/user/default/memories/events/mem_7893f66e-77e6-4b46-9cb9-fd2ca10e2a4c.md`
 - 抽取内容示例：
   - `饮食偏好：不喜欢香菜`
   - `饮品偏好：喜欢拿铁，不喝冰美式`
   - `出行偏好：坐飞机喜欢靠窗座位`
   - `奶油：用户养的布偶猫`
   - `小雨：用户的女朋友`
-- 检索触发与命中：
-  - `=== RETRIEVE CASE 1/8 ... Query-1 ===` 到 `=== RETRIEVE CASE 8/8 ... Query-8 ===`
-  - 每个 case 里 `search` 和 `find` 都返回 `memories` 列表
+- 检索触发与命中（clean env 直接 reopen）：
+  - `glob('**/*.md', 'viking://user/default/memories') -> 9 个 URI`
+  - `search('给我推荐个咖啡。') -> Top1 命中咖啡偏好文件`
+  - `read(uri)` 能读出真实正文
 - 存储路径：
   - `workspace_case13_<ts>`
   - `=== STORAGE PATHS ===`
 
 ## 5. 最终判断（针对 Case13）
 
-- 原理链路：通了（会话 -> 抽取 -> 落盘 -> 检索）。
+- 原理链路：通了（会话 -> 抽取 -> 落盘 -> 检索 -> 读取正文）。
 - 抽取质量：好（关键长期信息基本覆盖）。
-- 检索质量：中等（能召回，但结果偏宽，纯度和收敛需要继续优化）。
+- 检索质量：中等（能召回，Top1 常可命中，但排序偏宽，abstract 质量不稳）。
 
 教学定位：
 - 适合讲“上下文数据库型 memory”的完整链路。

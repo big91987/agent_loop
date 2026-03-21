@@ -7,6 +7,7 @@
 - 聚焦版（短期/长期/对象模型）：`/Users/admin/work/agent_loop/docs/memory/memory_focus_overview.md`
 - 大白话入门版（早期调研归档）：`/Users/admin/work/agent_loop/docs/memory/memory_systems_plain_guide.md`
 - 长期记忆专门说明：`/Users/admin/work/agent_loop/docs/memory/long_term_memory_principles.md`
+- v6.3 runtime 方案：`/Users/admin/work/agent_loop/docs/memory/v6_3_memory_runtime_design.md`
 - Memory 注入与 loop 时机对比：`/Users/admin/work/agent_loop/docs/memory/memory_architecture_compare.md`
 - MemU 单产品深度调研：`/Users/admin/work/agent_loop/docs/memory/memory_product_memu.md`
 - 已深测模块总览（特点/优势/边界）：`/Users/admin/work/agent_loop/docs/memory/deep_tested_modules_summary.md`
@@ -20,6 +21,6 @@
   - `06 Zep`：`/Users/admin/work/agent_loop/docs/memory/products/06_zep.md`（暂不测试）
   - `07 Supermemory`：`/Users/admin/work/agent_loop/docs/memory/products/07_supermemory.md`（暂不测试）
   - `08 Letta / MemGPT`：`/Users/admin/work/agent_loop/docs/memory/products/08_letta_memgpt.md`（暂不测试）
-  - `09 OpenViking`：`/Users/admin/work/agent_loop/docs/memory/products/09_openviking.md`（已测试）
+  - `09 OpenViking`：`/Users/admin/work/agent_loop/docs/memory/products/09_openviking.md`（已测试；已补 clean env 实物落盘与 reopen 检索结论）
   - `10 memos`：`/Users/admin/work/agent_loop/docs/memory/products/10_memos.md`（暂不测试）
 - pi-mono 短期记忆机制：`/Users/admin/work/agent_loop/docs/memory/pi_mono_short_memory_mechanism.md`
