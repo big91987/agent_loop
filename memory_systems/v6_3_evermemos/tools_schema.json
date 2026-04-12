@@ -1,0 +1,8 @@
+{
+  "memory_backend": "evermemos",
+  "active_tools": ["mem_get", "mem_set", "mem_update", "mem_delete"],
+  "notes": [
+    "Passive write uses EverMemOS memorize.",
+    "Passive retrieve uses EverMemOS fetch plus adapter-side ranking."
+  ]
+}

@@ -8,6 +8,7 @@ from .agent_loop_v5 import V5
 from .agent_loop_v6 import V6
 from .agent_loop_v6_1 import V6_1
 from .agent_loop_v6_2 import V6_2
+from .agent_loop_v7 import V7
 
 __all__ = [
     "AgentLoopState",
@@ -21,4 +22,5 @@ __all__ = [
     "V6",
     "V6_1",
     "V6_2",
+    "V7",
 ]

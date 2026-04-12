@@ -1,0 +1,40 @@
+{
+  "provider": "openai_compat",
+  "base_url": "https://api.minimaxi.com/v1",
+  "api_key_env": "MINIMAX_API_KEY",
+  "model_name": "MiniMax-M2.5",
+  "timeout_seconds": 120,
+  "memory_compact_ratio": 0.9,
+  "memory_context_window_tokens": 204800,
+  "pricing_currency": "CNY",
+  "pricing_input_per_million": 2.1,
+  "pricing_output_per_million": 8.4,
+  "pricing_cache_read_per_million": 1.47,
+  "pricing_cache_write_per_million": 7.35,
+  "workspace_path": "/Users/admin/work/agent_loop/workspaces/admin",
+  "skills_dir": "/Users/admin/.claude/skills",
+  "runtime_env": {
+    "MINIMAX_API_KEY": "",
+    "ZHIPU_API_KEY": "",
+    "MONGODB_HOST": "127.0.0.1"
+  },
+  "memory_backend": "evermemos",
+  "memory_system_dir": "/Users/admin/work/agent_loop/memory_systems/v6_3_evermemos",
+  "memory_artifact_dir": "./memory/evermemos",
+  "memory_backend_config": {
+    "repo_root": "/Users/admin/work/EverMemOS",
+    "python_bin": "/Users/admin/miniconda3/envs/py312/bin/python",
+    "vectorize_provider": "deepinfra",
+    "vectorize_model": "embedding-3",
+    "vectorize_base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "vectorize_api_key_env": "ZHIPU_API_KEY",
+    "vectorize_dimensions": 2048,
+    "hard_message_limit": 8,
+    "hard_token_limit": 8192,
+    "fetch_limit": 200,
+    "retrieve_top_k": 8,
+    "memory_types": ["episodic_memory", "event_log", "profile", "foresight"],
+    "memory_language": "zh"
+  },
+  "mcpServers": {}
+}
