@@ -1,0 +1,12 @@
+{
+  "backend": "openviking",
+  "notes": [
+    "Passive write/read are supported through session commit and search.",
+    "Active mem_get is supported.",
+    "Active mem_set/mem_update/mem_delete are intentionally unsupported in this adapter."
+  ],
+  "storage": {
+    "memory_root": "viking://user/default/memories",
+    "layout": ["profile.md", "preferences/*.md", "entities/*.md", "events/*.md"]
+  }
+}

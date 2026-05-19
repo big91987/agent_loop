@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 from pathlib import Path
 import signal
 import shutil
@@ -15,11 +14,10 @@ from core.client import OpenAICompatClient
 from core.config import load_config
 from core.logging_utils import create_session_logger
 from core.mcp_client import MCPManager as MCPManagerV4
-from core.runtime_kernel_types import RuntimeEvent, RuntimePhase, RuntimeRequest, TurnStatus
 from core.session_store_v6 import SessionRecord, SessionStoreV6
 from core.short_memory_v6_1 import ShortMemoryConfig
 from core.types import Message, TokenUsage
-from loops.agent_loop_v7 import V7
+from loops.agent_loop_v6_3 import V6_3
 
 try:
     import readline
@@ -36,59 +34,6 @@ except Exception:  # noqa: BLE001
 
 async def _read_line(prompt: str) -> str:
     return await asyncio.to_thread(input, prompt)
-
-
-def _apply_runtime_env_from_config(config_path: str) -> list[str]:
-    try:
-        raw = json.loads(Path(config_path).read_text(encoding="utf-8"))
-    except Exception:
-        return []
-    runtime_env_raw = raw.get("runtime_env", {})
-    if not isinstance(runtime_env_raw, dict):
-        return []
-    applied: list[str] = []
-    for key, value in runtime_env_raw.items():
-        name = str(key).strip()
-        if not name:
-            continue
-        text = str(value).strip() if value is not None else ""
-        if not text:
-            continue
-        os.environ[name] = text
-        applied.append(name)
-    return applied
-
-
-def _parse_env_value(raw: str) -> str:
-    text = raw.strip()
-    if len(text) >= 2 and text[0] == text[-1] and text[0] in {"'", '"'}:
-        return text[1:-1]
-    return text
-
-
-def _load_env_file(env_path: str) -> list[str]:
-    path = Path(env_path).expanduser()
-    if not path.exists() or not path.is_file():
-        return []
-    applied: list[str] = []
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line[len("export ") :].strip()
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        name = key.strip()
-        if not name:
-            continue
-        text = _parse_env_value(value)
-        if text == "":
-            continue
-        os.environ.setdefault(name, text)
-        applied.append(name)
-    return applied
 
 
 def _build_prompt_session(ui: "RefreshUI") -> Any | None:
@@ -307,7 +252,7 @@ class RefreshUI:
         total_rows = max(20, size.lines)
         sep = "-" * width
         header_lines = [
-            f"agent-loop v7 | model={self.model_name}",
+            f"agent-loop v6.3 | model={self.model_name}",
             f"log: {self.log_path}",
             f"session: {self.session_id} ({self.session_file})",
             "Commands: /quit /state /tokens /session /mcp /skill /memory",
@@ -426,18 +371,6 @@ def _persist_if_needed(
     return True
 
 
-def _emit_runtime_phase(
-    loop: V7,
-    phase: RuntimePhase,
-    **data: object,
-) -> None:
-    loop._emit_runtime_event(  # type: ignore[attr-defined]
-        "phase_changed",
-        phase=phase,
-        data=dict(data),
-    )
-
-
 def _latest_by_role(messages: List[Message], role: str) -> str:
     for msg in reversed(messages):
         if str(msg.get("role")) != role:
@@ -497,7 +430,7 @@ def _restored_preview_lines(messages: List[Message], *, max_pairs: int = 4) -> l
     return lines
 
 
-def _token_snapshot(loop: V7) -> dict[str, int | bool]:
+def _token_snapshot(loop: V6_3) -> dict[str, int | bool]:
     return loop.get_token_usage_snapshot()
 
 
@@ -524,7 +457,7 @@ def _compute_cost(
     return (prompt_tokens / 1_000_000.0) * input_per_million + (completion_tokens / 1_000_000.0) * output_per_million
 
 
-def _restore_token_baseline(loop: V7) -> None:
+def _restore_token_baseline(loop: V6_3) -> None:
     st = loop.get_short_memory_state()
     working_prompt = max(0, int(st.get("working_prompt_tokens", 0)))
     if working_prompt <= 0:
@@ -542,7 +475,7 @@ def _restore_token_baseline(loop: V7) -> None:
     loop._session_total_tokens = working_prompt  # type: ignore[attr-defined]
 
 
-def _restore_token_baseline_from_record(loop: V7, record: SessionRecord) -> None:
+def _restore_token_baseline_from_record(loop: V6_3, record: SessionRecord) -> None:
     if record.session_total_tokens > 0 or record.last_total_tokens > 0:
         loop._last_usage = TokenUsage(  # type: ignore[attr-defined]
             prompt_tokens=max(0, int(record.last_prompt_tokens)),
@@ -558,14 +491,14 @@ def _restore_token_baseline_from_record(loop: V7, record: SessionRecord) -> None
     _restore_token_baseline(loop)
 
 
-def _restore_short_memory_state_from_record(loop: V7, record: SessionRecord) -> None:
+def _restore_short_memory_state_from_record(loop: V6_3, record: SessionRecord) -> None:
     loop.hydrate_short_memory_compaction_state(
         session_tokens=max(0, int(record.last_compaction_session_tokens)),
         working_prompt_tokens=max(0, int(record.last_compaction_working_prompt_tokens)),
     )
 
 
-def _reset_token_baseline(loop: V7) -> None:
+def _reset_token_baseline(loop: V6_3) -> None:
     loop._last_usage = None  # type: ignore[attr-defined]
     loop._usage_seen = False  # type: ignore[attr-defined]
     loop._session_prompt_tokens = 0  # type: ignore[attr-defined]
@@ -574,7 +507,7 @@ def _reset_token_baseline(loop: V7) -> None:
 
 
 def _token_stats_line(
-    loop: V7,
+    loop: V6_3,
     *,
     turn_delta: dict[str, int] | None = None,
     pricing_input_per_million: float | None,
@@ -635,7 +568,7 @@ def _token_stats_line(
 
 
 def _activity_status_line(
-    loop: V7,
+    loop: V6_3,
     runtime_status: str,
     *,
     context_window_tokens: int,
@@ -720,7 +653,7 @@ def _build_completions(
     *,
     line: str,
     text: str,
-    loop: V7,
+    loop: V6_3,
     store: SessionStoreV6,
 ) -> list[str]:
     if not line.startswith("/"):
@@ -787,7 +720,7 @@ def _build_completions(
     return [cmd for cmd in _top_level_commands() if cmd.startswith(text)]
 
 
-def _setup_readline(*, history_file: Path, loop: V7, store: SessionStoreV6) -> None:
+def _setup_readline(*, history_file: Path, loop: V6_3, store: SessionStoreV6) -> None:
     if readline is None:
         return
 
@@ -861,7 +794,7 @@ def _resolve_workspace_path(path: str, workspace_path: str | None) -> str:
 
 
 async def async_main() -> int:
-    parser = argparse.ArgumentParser(description="v7 CLI (phase-01 runtime kernel + session + memory runtime)")
+    parser = argparse.ArgumentParser(description="v6.3 CLI (session + short-memory + long-memory runtime)")
     parser.add_argument("--config", default="./configs/default.json")
     parser.add_argument("--workspace-path", default=None, help="Workspace root path for isolating sessions/memory/logs/history")
     parser.add_argument("--session", default=None, help="Restore an existing session id")
@@ -929,15 +862,8 @@ async def async_main() -> int:
         default=True,
         help="Enable automatic short-memory compaction",
     )
-    parser.add_argument(
-        "--env-file",
-        default=str(Path(__file__).resolve().parent / ".env.v7"),
-        help="Optional env file loaded only by cli_v7.py (default: ./.env.v7)",
-    )
     args = parser.parse_args()
 
-    applied_env_file = _load_env_file(args.env_file)
-    applied_runtime_env = _apply_runtime_env_from_config(args.config)
     cfg = load_config(args.config)
     workspace_path = str(args.workspace_path).strip() if args.workspace_path else (cfg.workspace_path or None)
     effective_log_dir = _resolve_workspace_path(args.log_dir, workspace_path)
@@ -946,11 +872,7 @@ async def async_main() -> int:
     effective_memory_artifact_dir = _resolve_workspace_path(cfg.memory_artifact_dir, workspace_path)
 
     logger, log_path = create_session_logger(log_dir=effective_log_dir, debug=args.debug)
-    logger.info("startup loop=v7 model=%s provider=%s", cfg.model_name, cfg.provider)
-    if applied_env_file:
-        logger.info("applied env file keys=%s", ",".join(sorted(applied_env_file)))
-    if applied_runtime_env:
-        logger.info("applied runtime_env from config keys=%s", ",".join(sorted(applied_runtime_env)))
+    logger.info("startup loop=v6.3 model=%s provider=%s", cfg.model_name, cfg.provider)
 
     client = OpenAICompatClient(
         base_url=cfg.base_url,
@@ -965,12 +887,6 @@ async def async_main() -> int:
     turn_runtime: Dict[str, asyncio.Task[str] | None] = {"task": None}
     turn_interrupt_state = {"cancelled": False}
     turn_output_state = {"accepting": False}
-    phase_timing_state: Dict[str, object | None] = {
-        "turn_id": None,
-        "phase": None,
-        "phase_started_ts": None,
-        "turn_started_ts": None,
-    }
     compact_ratio = float(args.memory_compact_ratio) if args.memory_compact_ratio is not None else float(cfg.memory_compact_ratio)
     if compact_ratio <= 0:
         compact_ratio = 0.8
@@ -994,70 +910,6 @@ async def async_main() -> int:
             ui.set_runtime_status(status)
             _refresh_activity_status()
             ui.render()
-
-    def _runtime_event_to_ui(event: RuntimeEvent) -> None:
-        if not turn_output_state["accepting"]:
-            return
-        if not ui.enabled:
-            return
-        if event.type == "assistant_delta":
-            return
-        detail = ""
-        if event.type == "phase_changed":
-            current_phase = event.phase.value if event.phase else "-"
-            previous_phase = phase_timing_state.get("phase")
-            previous_started_ts = phase_timing_state.get("phase_started_ts")
-            tracked_turn_id = phase_timing_state.get("turn_id")
-            turn_started_ts = phase_timing_state.get("turn_started_ts")
-
-            if tracked_turn_id != event.turn_id:
-                previous_phase = None
-                previous_started_ts = None
-                turn_started_ts = event.ts if event.phase == RuntimePhase.TURN_START else event.ts
-
-            parts = [f"[PHASE] {current_phase}"]
-            if previous_phase and isinstance(previous_started_ts, (int, float)):
-                prev_duration_ms = max(0, int((event.ts - float(previous_started_ts)) * 1000))
-                parts.append(f"{previous_phase}={prev_duration_ms}ms")
-            if isinstance(turn_started_ts, (int, float)):
-                elapsed_ms = max(0, int((event.ts - float(turn_started_ts)) * 1000))
-                parts.append(f"t+{elapsed_ms}ms")
-            detail = " | ".join(parts)
-
-            phase_timing_state["turn_id"] = event.turn_id
-            phase_timing_state["phase"] = current_phase
-            phase_timing_state["phase_started_ts"] = event.ts
-            if current_phase == RuntimePhase.TURN_START.value or not isinstance(turn_started_ts, (int, float)):
-                phase_timing_state["turn_started_ts"] = event.ts
-            else:
-                phase_timing_state["turn_started_ts"] = turn_started_ts
-        elif event.type in {"tool_call_started", "tool_call_finished", "tool_call_failed"}:
-            tool_name = str(event.data.get("tool_name", "-"))
-            suffix = ""
-            if "duration_ms" in event.data:
-                suffix = f" ({event.data.get('duration_ms')}ms)"
-            detail = f"[EVENT] {event.type} {tool_name}{suffix}"
-        elif event.type in {"memory_retrieved", "memory_persisted"}:
-            detail = f"[EVENT] {event.type} {json.dumps(event.data, ensure_ascii=False)}"
-        elif event.type in {"turn_completed", "turn_failed", "turn_aborted"}:
-            parts = [f"[EVENT] {event.type} {json.dumps(event.data, ensure_ascii=False)}"]
-            previous_phase = phase_timing_state.get("phase")
-            previous_started_ts = phase_timing_state.get("phase_started_ts")
-            turn_started_ts = phase_timing_state.get("turn_started_ts")
-            if isinstance(previous_started_ts, (int, float)) and previous_phase:
-                prev_duration_ms = max(0, int((event.ts - float(previous_started_ts)) * 1000))
-                parts.append(f"{previous_phase}={prev_duration_ms}ms")
-            if isinstance(turn_started_ts, (int, float)):
-                total_ms = max(0, int((event.ts - float(turn_started_ts)) * 1000))
-                parts.append(f"total={total_ms}ms")
-            detail = " | ".join(parts)
-            phase_timing_state["phase"] = None
-            phase_timing_state["phase_started_ts"] = None
-            phase_timing_state["turn_started_ts"] = None
-            phase_timing_state["turn_id"] = None
-        else:
-            detail = f"[EVENT] {event.type}"
-        ui.add_dialogue("RUNTIME", detail)
 
     def _model_delta_to_ui(delta: str) -> None:
         if not turn_output_state["accepting"]:
@@ -1083,8 +935,6 @@ async def async_main() -> int:
             f"out={int(metrics.get('completion_tokens', 0))}, "
             f"total={int(metrics.get('total_tokens', 0))}; "
             f"latency={int(metrics.get('latency_ms', 0))}ms"
-            f"; ttfb={int(metrics.get('ttfb_ms', 0))}ms"
-            f"; decode={int(metrics.get('decode_ms', 0))}ms"
             + (f"; cost={_currency_symbol(pricing_currency)}{round_cost:.6f}" if round_cost is not None else "")
             + ")"
         )
@@ -1100,7 +950,7 @@ async def async_main() -> int:
         turn_stream_state["started"] = False
         _refresh_activity_status()
 
-    loop = V7(
+    loop = V6_3(
         client=client,
         model_name=cfg.model_name,
         timeout_seconds=cfg.timeout_seconds,
@@ -1115,7 +965,6 @@ async def async_main() -> int:
         status_callback=_status_to_ui if bool(args.ui_refresh) else None,
         model_delta_callback=_model_delta_to_ui if bool(args.ui_refresh) else None,
         model_round_callback=_model_round_to_ui if bool(args.ui_refresh) else None,
-        runtime_event_callback=_runtime_event_to_ui if bool(args.ui_refresh) else None,
         interrupt_check=lambda: bool(turn_interrupt_state["cancelled"]),
         short_memory_config=ShortMemoryConfig(
             auto_enabled=bool(args.memory_auto),
@@ -1146,7 +995,7 @@ async def async_main() -> int:
         _restore_short_memory_state_from_record(loop, record)
         _restore_token_baseline_from_record(loop, record)
     else:
-        record = store.create(model_name=cfg.model_name, loop_version="v7", persist=False)
+        record = store.create(model_name=cfg.model_name, loop_version="v6.3", persist=False)
         loop.set_memory_session(record.session_id)
         _reset_token_baseline(loop)
 
@@ -1175,7 +1024,7 @@ async def async_main() -> int:
     if ui.enabled and prompt_session is None:
         ui.set_activity_status(f"{ui.activity_status} | prompt_toolkit missing")
     if not ui.enabled:
-        ui.add(f"agent-loop suite started | loop=v7 | model={cfg.model_name}")
+        ui.add(f"agent-loop suite started | loop=v6.3 | model={cfg.model_name}")
         ui.add("Session Commands: /session list|new|use <id>")
         ui.add("MCP Commands: /mcp list|on|off|refresh")
         ui.add("Skill Commands: /skill list|use <name>|off")
@@ -1321,7 +1170,7 @@ async def async_main() -> int:
                         token_snapshot=_token_snapshot(loop),
                         short_memory_state=loop.get_short_memory_state(),
                     )
-                    record = store.create(model_name=cfg.model_name, loop_version="v7", persist=False)
+                    record = store.create(model_name=cfg.model_name, loop_version="v6.3", persist=False)
                     loop.state.messages = []
                     loop.set_raw_messages([])
                     loop.set_memory_session(record.session_id)
@@ -1528,18 +1377,8 @@ async def async_main() -> int:
             try:
                 turn_interrupt_state["cancelled"] = False
                 turn_output_state["accepting"] = True
-                session_id = str(getattr(record, "session_id", "default") or "default")
-                turn_runtime["task"] = asyncio.create_task(
-                    loop.run_turn_request(
-                        RuntimeRequest(
-                            session_id=session_id,
-                            user_input=user_input,
-                            mode="interactive",
-                            workspace_path=workspace_path,
-                        ),
-                    ),
-                )
-                result = await turn_runtime["task"]
+                turn_runtime["task"] = asyncio.create_task(loop.run_turn(user_input))
+                text = await turn_runtime["task"]
             except asyncio.CancelledError:
                 if turn_interrupt_state["cancelled"]:
                     turn_stream_state["started"] = False
@@ -1579,17 +1418,6 @@ async def async_main() -> int:
                 turn_interrupt_state["cancelled"] = False
                 turn_output_state["accepting"] = False
             ui.close_assistant_stream()
-            text = result.final_text
-            if result.turn_status == TurnStatus.ABORTED:
-                ui.set_runtime_status("等待输入")
-                _refresh_activity_status()
-                ui.add("Interrupted current turn (^C)")
-                continue
-            if result.turn_status == TurnStatus.FAILED:
-                error_line = f"Turn failed: {result.stop_reason.value}"
-                if result.error:
-                    error_line += f" | {result.error}"
-                ui.add_dialogue("SYSTEM", error_line)
             if text and not ui.enabled:
                 ui.add_dialogue("ASSISTANT", text)
             after = _token_snapshot(loop)
@@ -1609,22 +1437,8 @@ async def async_main() -> int:
             _refresh_activity_status()
             if not ui.enabled:
                 ui.add(token_line)
-            ui.set_runtime_status("短期记忆检查中")
-            _refresh_activity_status()
-            _emit_runtime_phase(
-                loop,
-                RuntimePhase.POST_TURN_COMPACT_CHECK,
-                auto_enabled=bool(loop.short_memory_config.auto_enabled),
-                threshold_tokens=int(loop.short_memory_config.usage_threshold_tokens),
-            )
             auto_compact = await loop.maybe_auto_compress_short_memory()
             if auto_compact and bool(auto_compact.get("performed")):
-                _emit_runtime_phase(
-                    loop,
-                    RuntimePhase.POST_TURN_COMPACT_RUN,
-                    covered_messages=int(auto_compact.get("covered_messages", 0) or 0),
-                    remaining_messages=int(auto_compact.get("remaining_messages", len(loop.state.messages)) or 0),
-                )
                 before_working = int(auto_compact.get("before_working_prompt_tokens", 0) or 0)
                 after_working = int(loop.get_short_memory_state().get("working_prompt_tokens", 0))
                 before_pct = int(round(min(1.0, float(before_working) / float(max(1, context_window_tokens))) * 100))
@@ -1639,14 +1453,6 @@ async def async_main() -> int:
                 ui.add_dialogue("MEMORY", "[summary]")
                 ui.add_dialogue("MEMORY", summary_text if summary_text else "(empty)")
                 _refresh_activity_status()
-            ui.set_runtime_status("会话保存中")
-            _refresh_activity_status()
-            _emit_runtime_phase(
-                loop,
-                RuntimePhase.SESSION_PERSIST,
-                message_count=len(loop.get_raw_messages()),
-                session_file=str(record.file_path),
-            )
             saved = _persist_if_needed(
                 store,
                 record,
@@ -1657,8 +1463,6 @@ async def async_main() -> int:
             )
             if saved:
                 ui.add_dialogue("SYSTEM", _saved_turn_badge())
-            ui.set_runtime_status("等待输入")
-            _refresh_activity_status()
     finally:
         if asyncio_sigint_installed:
             try:

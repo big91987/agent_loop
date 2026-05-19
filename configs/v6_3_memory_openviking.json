@@ -1,0 +1,32 @@
+{
+  "provider": "openai_compat",
+  "base_url": "https://api.minimaxi.com/v1",
+  "api_key_env": "MINIMAX_API_KEY",
+  "model_name": "MiniMax-M2.5",
+  "timeout_seconds": 120,
+  "memory_compact_ratio": 0.9,
+  "memory_context_window_tokens": 204800,
+  "pricing_currency": "CNY",
+  "pricing_input_per_million": 2.1,
+  "pricing_output_per_million": 8.4,
+  "pricing_cache_read_per_million": 1.47,
+  "pricing_cache_write_per_million": 7.35,
+  "workspace_path": "./workspaces/admin",
+  "skills_dir": "/Users/admin/.claude/skills",
+  "memory_backend": "openviking",
+  "memory_system_dir": "./memory_systems/v6_3_openviking",
+  "memory_artifact_dir": "./memory/openviking",
+  "memory_backend_config": {
+    "python_bin": "/Users/admin/miniconda3/envs/py312/bin/python",
+    "embed_model": "embedding-3",
+    "embed_base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "embed_api_key_env": "ZHIPU_API_KEY",
+    "embed_dim": 1024,
+    "default_search_mode": "quick",
+    "search_limit": 8,
+    "retrieve_top_k": 5,
+    "find_fallback": true,
+    "commit_wait_timeout": 180.0
+  },
+  "mcpServers": {}
+}

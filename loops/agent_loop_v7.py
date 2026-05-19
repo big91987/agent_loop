@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+from pathlib import Path
 import re
 import time
 from uuid import uuid4
@@ -27,7 +28,7 @@ from core.short_memory_v6_1 import (
     render_transcript,
     split_for_compaction,
 )
-from core.skill_loader import SkillLoader
+from core.skill_loader_v7 import SkillLoaderV7
 from core.types import Message, ToolSpec
 from tools.bash_tool import BashTool
 from tools.registry import build_tool_registry, tool_specs_for_names
@@ -87,7 +88,7 @@ class V7(BaseAgentLoop):
         self._mcp_tools: List[ToolSpec] = []
 
         self._base_system_prompt = self.state.system_prompt
-        self.skill_loader = SkillLoader(skills_dir)
+        self.skill_loader = SkillLoaderV7(skills_dir)
         self.active_skill_name: str | None = None
         self._base_tools: List[ToolSpec] = [*core_tools, BashTool().to_spec(), self._build_read_skill_tool()]
         self.tools: List[ToolSpec] = list(self._base_tools)
@@ -414,9 +415,11 @@ class V7(BaseAgentLoop):
             skill = self.skill_loader.get(skill_name)
             if not skill:
                 return f"Skill not found: {skill_name}"
+            skill_base_dir = str(Path(skill.path).resolve().parent)
+            rendered_content = skill.content.replace("{baseDir}", skill_base_dir)
             return (
-                f'<skill name="{skill.name}" location="{skill.path}">\n'
-                f"{skill.content}\n"
+                f'<skill name="{skill.name}" location="{skill.path}" base_dir="{skill_base_dir}">\n'
+                f"{rendered_content}\n"
                 "</skill>"
             )
 
@@ -796,6 +799,9 @@ class V7(BaseAgentLoop):
                             "latency_ms": int(snap.get("last_latency_ms", 0)),
                             "source": str(snap.get("last_usage_source", "none")),
                             "round": round_index + 1,
+                            "ttfb_ms": int(response.metrics.get("ttfb_ms", 0) or 0),
+                            "decode_ms": int(response.metrics.get("decode_ms", 0) or 0),
+                            "stream_ms": int(response.metrics.get("stream_ms", 0) or 0),
                         },
                     )
                 self._emit_runtime_event(
@@ -905,7 +911,8 @@ class V7(BaseAgentLoop):
                 self._append_turn_message({"role": "assistant", "content": final_text})
 
             if not turn_cancelled:
-                self._emit_phase(RuntimePhase.TURN_COMPLETE)
+                self._emit_status("记忆写入中")
+                self._emit_phase(RuntimePhase.TURN_PERSIST_START)
                 write_result = self.memory_runtime.passive_write(
                     user_input=user_input,
                     assistant_text=final_text,
@@ -918,8 +925,12 @@ class V7(BaseAgentLoop):
                     self._emit_runtime_event(
                         "memory_persisted",
                         phase=RuntimePhase.TURN_PERSIST,
-                        data={"mutation_count": len(write_result.mutations)},
+                        data={
+                            "mutation_count": len(write_result.mutations),
+                            **(write_result.debug if isinstance(write_result.debug, dict) else {}),
+                        },
                     )
+                self._emit_phase(RuntimePhase.TURN_COMPLETE)
 
             stop_reason = StopReason.FINAL_ANSWER.value if not hit_round_limit else StopReason.MAX_TOOL_ROUNDS.value
             self._emit_runtime_event(

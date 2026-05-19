@@ -22,12 +22,12 @@
   - `memory_user_id`: logical memory owner id (for isolation)
   - `memory_store_path_template`: long-memory store template; supports `{user}` or `{memory_user_id}`
   - `memory_store_path`: fixed long-memory store path (used when template is not provided)
-- `v7_memory_simplemem.json`: v7 profile for `Phase 01 / Runtime Kernel`, preserving the v6.3 `simplemem` memory runtime baseline.
+- `v7_memory_simplemem.json`: v7 profile for `Phase 01 / Runtime Kernel`, preserving the v6.3 `simplemem` memory runtime baseline. Loads skills from both `~/.openclaw/skills` and `~/.claude/skills`.
   - `memory_backend`: `simplemem`
   - `memory_system_dir`: `/Users/admin/work/agent_loop/memory_systems/v6_3_simplemem`
   - `memory_artifact_dir`: relative artifact root, resolved under workspace if `workspace_path` is set
   - `runtime_env`: optional per-config env injection, supported only by `cli_v7.py`; non-empty values are loaded into the current process before config parsing
-- `v7_memory_evermemos.json`: v7 profile for `Phase 01 / Runtime Kernel`, using the `evermemos` backend.
+- `v7_memory_evermemos.json`: v7 profile for `Phase 01 / Runtime Kernel`, using the `evermemos` backend. Loads skills from both `~/.openclaw/skills` and `~/.claude/skills`.
   - `memory_backend`: `evermemos`
   - `memory_system_dir`: `/Users/admin/work/agent_loop/memory_systems/v6_3_evermemos`
   - `memory_artifact_dir`: `./memory/evermemos`
@@ -64,3 +64,4 @@ Notes:
 
 - `runtime_env` is currently implemented only in `cli_v7.py`.
 - Empty `runtime_env` values are ignored; fill in the keys you actually want the v7 process to load.
+- `cli_v7.py` also auto-loads `./.env.v7` by default and uses it only when the variable is not already present in the shell. Override with `--env-file`.

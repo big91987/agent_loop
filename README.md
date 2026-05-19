@@ -1,6 +1,6 @@
 # Python Agent Loop Teaching Suite
 
-教学目标：用最小代码从 `v1`（纯对话）走到 `v2`（教学用基础工具）、`v3`（本地 CLI 工具），再到 `v4`（MCP）、`v4.1`（MCP + resources + 多传输）、`v5`（Skill）、`v6`（Session 基础设施）、`v6.1`（短期记忆压缩）和 `v6.2`（长期记忆工具 + workspace 隔离）。
+教学目标：用最小代码从 `v1`（纯对话）走到 `v2`（教学用基础工具）、`v3`（本地 CLI 工具），再到 `v4`（MCP）、`v4.1`（MCP + resources + 多传输）、`v5`（Skill）、`v6`（Session 基础设施）、`v6.1`（短期记忆压缩）、`v6.2`（长期记忆工具 + workspace 隔离）和 `v6.3`（memory runtime + adapter/backend 切换）。
 
 ## 目录
 
@@ -10,12 +10,13 @@
 - `cli_v6.py`: v6 CLI 入口（session-first）
 - `cli_v6_1.py`: v6.1 CLI 入口（session + short-memory）
 - `cli_v6_2.py`: v6.2 CLI 入口（session + short-memory + long-memory）
+- `cli_v6_3.py`: v6.3 CLI 入口（session + short-memory + memory runtime）
 - `core/`: 配置、客户端抽象、工具定义
 - `tools/`: 工具定义（每个 tool 一个文件）
 - `backups_sync_v1v2/`: 重构前同步版备份
 
 架构说明（教学版）：
-- `v1/v2/v3/v4/v4.1/v5/v6/v6.1/v6.2` 均按版本独立实现，每个 loop 仅继承 `BaseAgentLoop`。
+- `v1/v2/v3/v4/v4.1/v5/v6/v6.1/v6.2/v6.3` 均按版本独立实现，每个 loop 仅继承 `BaseAgentLoop`。
 - 这样可以直接对照每个版本的完整行为，不会因为跨版本继承链影响理解。
 - `loops/agent_loop_v1.py`: v1 基础 loop
 - `loops/agent_loop_v2.py`: v2 工具 loop
@@ -26,11 +27,12 @@
 - `loops/agent_loop_v6.py`: v6 Session/UI loop
 - `loops/agent_loop_v6_1.py`: v6.1 short-memory loop
 - `loops/agent_loop_v6_2.py`: v6.2 long-memory loop
+- `loops/agent_loop_v6_3.py`: v6.3 memory runtime loop
 - `tests/`: v1/v2 测试
 
 ## 配置
 
-推荐使用 `configs/default.json`、`configs/v4_mcp_simple.json`、`configs/v4_1_mcp_simple.json`、`configs/v5_skill_pi_style.json`、`configs/v6_session.json`、`configs/v6_1_short_memory.json` 或 `configs/v6_2_memory_simplemem.json`。
+推荐使用 `configs/default.json`、`configs/v4_mcp_simple.json`、`configs/v4_1_mcp_simple.json`、`configs/v5_skill_pi_style.json`、`configs/v6_session.json`、`configs/v6_1_short_memory.json`、`configs/v6_2_memory_simplemem.json`、`configs/v6_3_memory_simplemem.json` 或 `configs/v6_3_memory_mem0.json`。
 
 配置字段：
 - `provider`: 供应商标识（教学版仅做信息保留）
@@ -63,6 +65,8 @@ python3 cli_v6.py --config ./configs/v6_session.json --ui-refresh
 python3 cli_v6_1.py --config ./configs/v6_1_short_memory.json
 python3 cli_v6_2.py --config ./configs/v6_2_memory_simplemem.json
 python3 cli_v6_2.py --config ./configs/v6_2_memory_simplemem.json --workspace-path /tmp/demo_workspace
+python3 cli_v6_3.py --config ./configs/v6_3_memory_simplemem.json
+python3 cli_v6_3.py --config ./configs/v6_3_memory_mem0.json
 ```
 
 交互命令：
@@ -416,6 +420,30 @@ python3 cli_v6_2.py --config ./configs/v6_2_memory_simplemem.json
 python3 cli_v6_2.py --config ./configs/v6_2_memory_simplemem.json --workspace-path /tmp/demo_workspace
 ```
 
+### v6.3（memory runtime + adapter/backend 切换）
+- 新 CLI 入口：`cli_v6_3.py`
+- 新 loop：`loops/agent_loop_v6_3.py`
+- 新增 memory runtime 三层：
+  - loop hooks
+  - stateful adapter
+  - backend
+- 被动通道：
+  - `turn_start -> passive retrieve`
+  - `turn_end -> passive write`
+- 主动通道：
+  - `mem_get / mem_set / mem_update / mem_delete`
+- 当前支持 backend：
+  - `simplemem`
+  - `mem0`
+- 所有 memory artifacts 默认保存在 workspace 下；若未设置 `workspace_path`，则相对 `pwd`
+- 方案文档：
+  - `docs/memory/v6_3_memory_runtime_design.md`
+- 启动示例：
+```bash
+python3 cli_v6_3.py --config ./configs/v6_3_memory_simplemem.json
+python3 cli_v6_3.py --config ./configs/v6_3_memory_mem0.json
+```
+
 ## TODO（基于 PRD 的实现计划）
 
 | 阶段 | 目标 | 关键内容 | 状态 |
@@ -429,6 +457,7 @@ python3 cli_v6_2.py --config ./configs/v6_2_memory_simplemem.json --workspace-pa
 | v6 | 队列/中断等工程机制 | 消息队列、中断控制、运行时拆分 | 待实现 |
 | v6.1 | 短期记忆管理 | session 历史压缩、自动阈值压缩、摘要可维护 | 已完成 |
 | v6.2 | 长期记忆管理（教学版） | policy 驱动记忆工具 + workspace 隔离 + 可替换 memory system | 已完成 |
+| v6.3 | memory runtime（教学版） | hook + stateful adapter + backend 切换（simplemem/mem0） | 已完成 |
 
 ## 文档
 
@@ -441,4 +470,5 @@ python3 cli_v6_2.py --config ./configs/v6_2_memory_simplemem.json --workspace-pa
 - MemU 单产品深度调研（原理/流程/能力/跑分）：`docs/memory/memory_product_memu.md`
 - Memory 大白话综述 + 系统扫描 + Benchmark/SOTA：`docs/memory/memory_research_overview.md`
 - 长期记忆专门说明（对象模型/主流方案/接口与 loop）：`docs/memory/long_term_memory_principles.md`
+- v6.3 memory runtime 方案：`docs/memory/v6_3_memory_runtime_design.md`
 - pi-mono 短期记忆机制详解：`docs/memory/pi_mono_short_memory_mechanism.md`

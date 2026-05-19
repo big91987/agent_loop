@@ -5,7 +5,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from .mcp_client import MCPServerConfig
 
@@ -30,9 +30,12 @@ class AppConfig:
     pricing_cache_write_per_million: float | None = None
     workspace_path: str | None = None
     memory_user_id: str = "default"
+    memory_backend: str = "simplemem"
     memory_system_dir: str = "./memory_systems/simplemem_v1"
     memory_store_path: str = "./memory/v6_2_long_memory.jsonl"
     memory_store_path_template: str | None = None
+    memory_artifact_dir: str = "./memory/simplemem"
+    memory_backend_config: Dict[str, Any] | None = None
 
 
 _ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -173,6 +176,7 @@ def load_config(path: str) -> AppConfig:
     pricing_output_per_million = _to_float_or_none(raw.get("pricing_output_per_million"))
     pricing_cache_read_per_million = _to_float_or_none(raw.get("pricing_cache_read_per_million"))
     pricing_cache_write_per_million = _to_float_or_none(raw.get("pricing_cache_write_per_million"))
+    memory_backend = str(raw.get("memory_backend", "simplemem")).strip().lower() or "simplemem"
     memory_system_dir = str(raw.get("memory_system_dir", "./memory_systems/simplemem_v1")).strip() or "./memory_systems/simplemem_v1"
     workspace_path_raw = raw.get("workspace_path")
     workspace_path = str(workspace_path_raw).strip() if workspace_path_raw is not None else None
@@ -192,6 +196,9 @@ def load_config(path: str) -> AppConfig:
         if memory_store_path_template
         else memory_store_path_raw
     )
+    memory_artifact_dir = str(raw.get("memory_artifact_dir", f"./memory/{memory_backend}")).strip() or f"./memory/{memory_backend}"
+    memory_backend_config_raw = raw.get("memory_backend_config", {})
+    memory_backend_config = memory_backend_config_raw if isinstance(memory_backend_config_raw, dict) else {}
 
     return AppConfig(
         provider=str(raw["provider"]),
@@ -212,7 +219,10 @@ def load_config(path: str) -> AppConfig:
         pricing_cache_write_per_million=pricing_cache_write_per_million,
         workspace_path=workspace_path,
         memory_user_id=memory_user_id,
+        memory_backend=memory_backend,
         memory_system_dir=memory_system_dir,
         memory_store_path=memory_store_path,
         memory_store_path_template=memory_store_path_template or None,
+        memory_artifact_dir=memory_artifact_dir,
+        memory_backend_config=memory_backend_config,
     )

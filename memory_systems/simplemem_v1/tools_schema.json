@@ -12,6 +12,8 @@
       "version",
       "created_at",
       "updated_at",
+      "mentioned_at",
+      "occurred_at",
       "expires_at",
       "deleted_at"
     ],
@@ -56,7 +58,9 @@
         "content": "string",
         "tags": "string[]",
         "confidence": "float",
-        "source": "string"
+        "source": "string",
+        "mentioned_at": "string(ISO-8601, optional)",
+        "occurred_at": "string(ISO-8601, optional)"
       }
     },
     "mem_update": {

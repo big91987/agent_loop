@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Dict, List
 
 from core.memory_system_v6_2 import MemorySystemRuntimeV62
@@ -11,6 +12,16 @@ from .agent_loop_v6_1 import V6_1
 
 
 class V6_2(V6_1):
+    @staticmethod
+    def _now_context() -> Dict[str, str]:
+        now_local = datetime.now().astimezone()
+        now_utc = datetime.now(timezone.utc)
+        return {
+            "local": now_local.isoformat(timespec="seconds"),
+            "utc": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "tz": str(now_local.tzinfo or "UTC"),
+        }
+
     def __init__(
         self,
         *,
@@ -48,12 +59,16 @@ class V6_2(V6_1):
         super()._apply_skill_prompt()
         policy = self.memory_runtime.get_policy_text()
         schema = self.memory_runtime.get_schema_text()
+        now_ctx = self._now_context()
         self.state.system_prompt = (
             f"{self.state.system_prompt}\n\n"
             "[Long Memory System]\n"
             f"- workspace_path: {self.workspace_path}\n"
             f"- memory_store_path: {self.memory_runtime.store.path}\n"
             f"- memory_session_id: {self.memory_session_id}\n"
+            f"- current_time_local: {now_ctx['local']}\n"
+            f"- current_time_utc: {now_ctx['utc']}\n"
+            f"- timezone: {now_ctx['tz']}\n"
             "- Use memory tools when beneficial; do NOT treat this as mandatory fixed flow.\n"
             "- Decide autonomously whether to retrieve/store/update/delete.\n\n"
             "<memory_policy>\n"
@@ -91,6 +106,10 @@ class V6_2(V6_1):
             tags = [str(x).strip() for x in tags_raw] if isinstance(tags_raw, list) else []
             confidence = float(params.get("confidence", 0.7) or 0.7)
             source = str(params.get("source", "assistant")).strip() or "assistant"
+            mentioned_at_raw = params.get("mentioned_at")
+            mentioned_at = str(mentioned_at_raw).strip() if mentioned_at_raw is not None else None
+            occurred_at_raw = params.get("occurred_at")
+            occurred_at = str(occurred_at_raw).strip() if occurred_at_raw is not None else None
             result = self.memory_runtime.store.set_record(
                 memory_type=memory_type,
                 scope=scope,
@@ -98,6 +117,8 @@ class V6_2(V6_1):
                 tags=tags,
                 confidence=confidence,
                 source=source,
+                mentioned_at=mentioned_at,
+                occurred_at=occurred_at,
             )
             return json.dumps(result, ensure_ascii=False)
 
@@ -159,6 +180,8 @@ class V6_2(V6_1):
                         "tags": {"type": "array", "items": {"type": "string"}},
                         "confidence": {"type": "number"},
                         "source": {"type": "string"},
+                        "mentioned_at": {"type": "string", "description": "ISO-8601 when this was mentioned in chat"},
+                        "occurred_at": {"type": "string", "description": "ISO-8601 when the event/fact occurred (if known)"},
                     },
                     "required": ["type", "scope", "content"],
                     "additionalProperties": False,

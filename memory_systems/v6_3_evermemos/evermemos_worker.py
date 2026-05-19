@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 from collections import defaultdict
 from contextlib import suppress
 from datetime import datetime, timezone
@@ -14,6 +15,11 @@ from typing import Any
 
 JSON_PREFIX = "__JSON__"
 STATE: dict[str, Any] = {}
+
+
+def _log(message: str) -> None:
+    ts = datetime.now().astimezone().isoformat(timespec="seconds")
+    print(f"[evermemos_worker] {ts} {message}", file=sys.stderr, flush=True)
 
 
 def _emit(payload: dict[str, Any]) -> None:
@@ -230,8 +236,9 @@ async def _ensure_group(payload: dict[str, Any]) -> dict[str, Any]:
 
     group_id = str(payload["group_id"])
     if group_id in STATE["initialized_groups"]:
-        return {"ok": True, "created": False, "group_id": group_id}
+        return {"ok": True, "created": False, "group_id": group_id, "ensure_group_ms": 0}
 
+    started_at = time.perf_counter()
     scene = str(payload.get("scene", "assistant"))
     user_id = str(payload["user_id"])
     user_name = str(payload.get("user_name", "用户"))
@@ -256,14 +263,23 @@ async def _ensure_group(payload: dict[str, Any]) -> dict[str, Any]:
     )
     resp = await STATE["conversation_meta_service"].save(req)
     STATE["initialized_groups"].add(group_id)
-    return {"ok": True, "created": bool(resp), "group_id": group_id, "scene": scene}
+    ensure_group_ms = int((time.perf_counter() - started_at) * 1000)
+    _log(f"ensure_group group_id={group_id} created={bool(resp)} duration_ms={ensure_group_ms}")
+    return {
+        "ok": True,
+        "created": bool(resp),
+        "group_id": group_id,
+        "scene": scene,
+        "ensure_group_ms": ensure_group_ms,
+    }
 
 
 async def _memorize(payload: dict[str, Any]) -> dict[str, Any]:
     from api_specs.request_converter import convert_simple_message_to_memorize_request
     from core.context.context import set_current_app_info, clear_current_app_info
 
-    await _ensure_group(payload)
+    total_started_at = time.perf_counter()
+    ensure_group_result = await _ensure_group(payload)
     message_id = str(payload["message_id"])
     req_payload = {
         "group_id": str(payload["group_id"]),
@@ -278,7 +294,10 @@ async def _memorize(payload: dict[str, Any]) -> dict[str, Any]:
     }
     token = set_current_app_info({"request_id": f"evermemos_{message_id}"})
     try:
+        convert_started_at = time.perf_counter()
         req = await convert_simple_message_to_memorize_request(req_payload)
+        convert_request_ms = int((time.perf_counter() - convert_started_at) * 1000)
+        log_started_at = time.perf_counter()
         await STATE["request_log_service"].save_request_logs(
             request=req,
             version="agent_loop_v63",
@@ -287,8 +306,30 @@ async def _memorize(payload: dict[str, Any]) -> dict[str, Any]:
             url="local://evermemos_worker",
             raw_input_dict=req_payload,
         )
+        request_log_ms = int((time.perf_counter() - log_started_at) * 1000)
+        memorize_started_at = time.perf_counter()
         count = await STATE["memory_manager"].memorize(req)
-        return {"ok": True, "count": int(count or 0), "message_id": message_id}
+        memorize_ms = int((time.perf_counter() - memorize_started_at) * 1000)
+        total_ms = int((time.perf_counter() - total_started_at) * 1000)
+        _log(
+            "memorize "
+            f"message_id={message_id} role={req_payload['role']} "
+            f"ensure_group_ms={int(ensure_group_result.get('ensure_group_ms', 0) or 0)} "
+            f"convert_request_ms={convert_request_ms} "
+            f"request_log_ms={request_log_ms} "
+            f"memory_manager_ms={memorize_ms} "
+            f"total_ms={total_ms} count={int(count or 0)}"
+        )
+        return {
+            "ok": True,
+            "count": int(count or 0),
+            "message_id": message_id,
+            "ensure_group_ms": int(ensure_group_result.get("ensure_group_ms", 0) or 0),
+            "convert_request_ms": convert_request_ms,
+            "request_log_ms": request_log_ms,
+            "memory_manager_ms": memorize_ms,
+            "total_ms": total_ms,
+        }
     finally:
         clear_current_app_info(token)
 

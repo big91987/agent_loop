@@ -21,6 +21,8 @@ class AssistantResponse:
     tool_calls: List[ToolCall] = field(default_factory=list)
     usage: "TokenUsage | None" = None
     reasoning: str = ""
+    metrics: Dict[str, int | str] = field(default_factory=dict)
+    metrics: Dict[str, int | str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

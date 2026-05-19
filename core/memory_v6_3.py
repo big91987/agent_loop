@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import atexit
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from importlib import import_module
@@ -1602,9 +1603,15 @@ class EverMemOSAdapter(BaseMemoryAdapter):
         assistant_text = _normalize_text(event.assistant_text)
         if not user_text and not assistant_text:
             return PassiveWriteResult(should_store=False)
+        total_started = time.perf_counter()
+        ensure_started = time.perf_counter()
         self._ensure_group(event.session_id)
+        ensure_group_ms = int((time.perf_counter() - ensure_started) * 1000)
         mutations: List[Dict[str, Any]] = []
+        memorize_user_ms = 0
+        memorize_assistant_ms = 0
         if user_text:
+            user_started = time.perf_counter()
             mutations.append(
                 self._memorize_message(
                     session_id=event.session_id,
@@ -1615,7 +1622,9 @@ class EverMemOSAdapter(BaseMemoryAdapter):
                     create_time=event.now_local,
                 )
             )
+            memorize_user_ms = int((time.perf_counter() - user_started) * 1000)
         if assistant_text:
+            assistant_started = time.perf_counter()
             mutations.append(
                 self._memorize_message(
                     session_id=event.session_id,
@@ -1626,6 +1635,20 @@ class EverMemOSAdapter(BaseMemoryAdapter):
                     create_time=event.now_local,
                 )
             )
+            memorize_assistant_ms = int((time.perf_counter() - assistant_started) * 1000)
+        internal_ensure_group_ms = 0
+        internal_convert_request_ms = 0
+        internal_request_log_ms = 0
+        internal_memory_manager_ms = 0
+        internal_memorize_total_ms = 0
+        for row in mutations:
+            if not isinstance(row, dict):
+                continue
+            internal_ensure_group_ms += int(row.get("ensure_group_ms", 0) or 0)
+            internal_convert_request_ms += int(row.get("convert_request_ms", 0) or 0)
+            internal_request_log_ms += int(row.get("request_log_ms", 0) or 0)
+            internal_memory_manager_ms += int(row.get("memory_manager_ms", 0) or 0)
+            internal_memorize_total_ms += int(row.get("total_ms", 0) or 0)
         stored = any(int(row.get("count", 0) or 0) > 0 for row in mutations if isinstance(row, dict))
         return PassiveWriteResult(
             should_store=stored,
@@ -1635,6 +1658,15 @@ class EverMemOSAdapter(BaseMemoryAdapter):
                 "repo_root": str(self.repo_root),
                 "worker_log": str(self._worker_log),
                 "mongodb_database": self._db_name,
+                "ensure_group_ms": ensure_group_ms,
+                "memorize_user_ms": memorize_user_ms,
+                "memorize_assistant_ms": memorize_assistant_ms,
+                "internal_ensure_group_ms": internal_ensure_group_ms,
+                "internal_convert_request_ms": internal_convert_request_ms,
+                "internal_request_log_ms": internal_request_log_ms,
+                "internal_memory_manager_ms": internal_memory_manager_ms,
+                "internal_memorize_total_ms": internal_memorize_total_ms,
+                "total_ms": int((time.perf_counter() - total_started) * 1000),
             },
         )
 

@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import time
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple
 from urllib import request
@@ -223,6 +224,7 @@ class OpenAICompatClient(LLMClient):
                     tool_calls=tool_calls,
                     usage=self._parse_usage(data.get("usage")),
                     reasoning=reasoning,
+                    metrics={},
                 )
 
             text_parts: List[str] = []
@@ -230,6 +232,9 @@ class OpenAICompatClient(LLMClient):
             # index -> {"id": str, "name": str, "arguments": str}
             tool_call_buffers: Dict[int, Dict[str, str]] = {}
             usage: TokenUsage | None = None
+            stream_started_at = time.perf_counter()
+            first_chunk_at: float | None = None
+            last_chunk_at: float | None = None
 
             for raw_line in resp:
                 if should_abort is not None and should_abort():
@@ -244,6 +249,10 @@ class OpenAICompatClient(LLMClient):
                     chunk = json.loads(payload_line)
                 except json.JSONDecodeError:
                     continue
+                now = time.perf_counter()
+                if first_chunk_at is None:
+                    first_chunk_at = now
+                last_chunk_at = now
                 if isinstance(chunk, dict):
                     chunk_usage = chunk.get("usage")
                     parsed_usage = self._parse_usage(chunk_usage)
@@ -310,12 +319,25 @@ class OpenAICompatClient(LLMClient):
             reasoning_text = "\n".join(reasoning_parts).strip()
             if self.logger and reasoning_text:
                 self.logger.debug("model reasoning (stream): %s", reasoning_text)
+            stream_finished_at = time.perf_counter()
+            ttfb_ms = 0
+            decode_ms = 0
+            stream_ms = max(0, int((stream_finished_at - stream_started_at) * 1000))
+            if first_chunk_at is not None:
+                ttfb_ms = max(0, int((first_chunk_at - stream_started_at) * 1000))
+                decode_end = last_chunk_at or stream_finished_at
+                decode_ms = max(0, int((decode_end - first_chunk_at) * 1000))
 
             return AssistantResponse(
                 text="".join(text_parts).strip(),
                 tool_calls=tool_calls,
                 usage=usage,
                 reasoning=reasoning_text,
+                metrics={
+                    "ttfb_ms": ttfb_ms,
+                    "decode_ms": decode_ms,
+                    "stream_ms": stream_ms,
+                },
             )
 
     @staticmethod

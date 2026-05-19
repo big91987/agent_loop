@@ -15,7 +15,11 @@ class RuntimePhase(str, Enum):
     TOOL_RESULT = "tool_result"
     POST_MODEL = "post_model"
     TURN_COMPLETE = "turn_complete"
+    TURN_PERSIST_START = "turn_persist_start"
     TURN_PERSIST = "turn_persist"
+    POST_TURN_COMPACT_CHECK = "post_turn_compact_check"
+    POST_TURN_COMPACT_RUN = "post_turn_compact_run"
+    SESSION_PERSIST = "session_persist"
     TURN_END = "turn_end"
 
 

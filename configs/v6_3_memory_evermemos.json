@@ -11,18 +11,13 @@
   "pricing_output_per_million": 8.4,
   "pricing_cache_read_per_million": 1.47,
   "pricing_cache_write_per_million": 7.35,
-  "workspace_path": "/Users/admin/work/agent_loop/workspaces/admin",
-  "skills_dir": "/Users/admin/.openclaw/skills:/Users/admin/.claude/skills",
-  "runtime_env": {
-    "MINIMAX_API_KEY": "",
-    "ZHIPU_API_KEY": "",
-    "MONGODB_HOST": "127.0.0.1"
-  },
+  "workspace_path": "./workspaces/admin",
+  "skills_dir": "/Users/admin/.claude/skills",
   "memory_backend": "evermemos",
-  "memory_system_dir": "/Users/admin/work/agent_loop/memory_systems/v6_3_evermemos",
+  "memory_system_dir": "./memory_systems/v6_3_evermemos",
   "memory_artifact_dir": "./memory/evermemos",
   "memory_backend_config": {
-    "repo_root": "/Users/admin/work/EverMemOS",
+    "repo_root": "/tmp/memory_scan_round2/EverMemOS_real_20260311",
     "python_bin": "/Users/admin/miniconda3/envs/py312/bin/python",
     "vectorize_provider": "deepinfra",
     "vectorize_model": "embedding-3",

@@ -31,6 +31,8 @@ class MemoryRecord:
     version: int
     created_at: str
     updated_at: str
+    mentioned_at: str | None = None
+    occurred_at: str | None = None
     expires_at: str | None = None
     deleted_at: str | None = None
 
@@ -46,6 +48,8 @@ class MemoryRecord:
             "version": int(self.version),
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "mentioned_at": self.mentioned_at,
+            "occurred_at": self.occurred_at,
             "expires_at": self.expires_at,
             "deleted_at": self.deleted_at,
         }
@@ -65,6 +69,8 @@ class MemoryRecord:
             version=max(1, int(raw.get("version", 1) or 1)),
             created_at=str(raw.get("created_at", "")) or _now_iso(),
             updated_at=str(raw.get("updated_at", "")) or _now_iso(),
+            mentioned_at=str(raw.get("mentioned_at")) if raw.get("mentioned_at") else None,
+            occurred_at=str(raw.get("occurred_at")) if raw.get("occurred_at") else None,
             expires_at=str(raw.get("expires_at")) if raw.get("expires_at") else None,
             deleted_at=str(raw.get("deleted_at")) if raw.get("deleted_at") else None,
         )
@@ -141,6 +147,8 @@ class MemoryStoreV62:
         tags: List[str] | None = None,
         confidence: float = 0.7,
         source: str = "assistant",
+        mentioned_at: str | None = None,
+        occurred_at: str | None = None,
     ) -> Dict[str, object]:
         normalized = " ".join((content or "").split()).strip()
         if not normalized:
@@ -154,6 +162,9 @@ class MemoryStoreV62:
             if tags:
                 merged = sorted(set([*found.tags, *[t for t in tags if t.strip()]]))
                 found.tags = merged
+            found.mentioned_at = (mentioned_at or "").strip() or found.mentioned_at or now
+            if occurred_at is not None:
+                found.occurred_at = (occurred_at or "").strip() or None
             self._persist()
             return {"ok": True, "created": False, "record": found.to_dict()}
 
@@ -168,6 +179,8 @@ class MemoryStoreV62:
             version=1,
             created_at=now,
             updated_at=now,
+            mentioned_at=(mentioned_at or "").strip() or now,
+            occurred_at=(occurred_at or "").strip() or None,
         )
         self._records.append(record)
         self._persist()
@@ -203,6 +216,12 @@ class MemoryStoreV62:
         if "expires_at" in patch:
             raw = str(patch.get("expires_at", "")).strip()
             record.expires_at = raw or None
+        if "mentioned_at" in patch:
+            raw = str(patch.get("mentioned_at", "")).strip()
+            record.mentioned_at = raw or None
+        if "occurred_at" in patch:
+            raw = str(patch.get("occurred_at", "")).strip()
+            record.occurred_at = raw or None
         record.updated_at = now
         record.version += 1
         self._persist()
@@ -279,6 +298,8 @@ class MemoryStoreV62:
                 "confidence": record.confidence,
                 "version": record.version,
                 "updated_at": record.updated_at,
+                "mentioned_at": record.mentioned_at,
+                "occurred_at": record.occurred_at,
                 "score": score,
             }
             for score, record in rows[: max(1, int(top_k))]

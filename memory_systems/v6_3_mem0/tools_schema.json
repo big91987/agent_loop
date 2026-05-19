@@ -1,0 +1,36 @@
+{
+  "system_id": "v6_3_mem0",
+  "memory_record": {
+    "fields": [
+      "id",
+      "type",
+      "scope",
+      "content",
+      "tags",
+      "confidence",
+      "source",
+      "version",
+      "created_at",
+      "updated_at",
+      "mentioned_at",
+      "occurred_at",
+      "expires_at",
+      "deleted_at"
+    ],
+    "type_enum": [
+      "policy",
+      "profile",
+      "fact",
+      "preference",
+      "episode",
+      "procedure",
+      "todo"
+    ],
+    "scope_enum": [
+      "global",
+      "user",
+      "project",
+      "session"
+    ]
+  }
+}
